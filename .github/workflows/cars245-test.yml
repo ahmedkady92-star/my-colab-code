@@ -12,6 +12,7 @@ on:
     paths:
       - ".github/workflows/cars245-test.yml"
       - "cars245_strict.py"
+      - "cars245_fitment_enrich.py"
       - "cars245_finalize.py"
       - "cars245_batch.txt"
 
@@ -48,6 +49,9 @@ jobs:
             python cars245_strict.py "$part" --max-products 50 --delay 0.3 --output-dir output
           done < /tmp/parts.txt
 
+      - name: Enrich brake pad fitment
+        run: python cars245_fitment_enrich.py --input-dir output --max-urls 8
+
       - name: Finalize Sheet-safe output
         run: python cars245_finalize.py --input-dir output
 
@@ -63,7 +67,7 @@ jobs:
           for f in files:
               r = json.load(open(f, encoding='utf-8'))
               print('\nFILE', f)
-              print('query_part_number=', r.get('query_part_number'))
+              print('search_part=', r.get('search_part'))
               print('allowed_product_family=', r.get('allowed_product_family'))
               print('alternatives_found=', r.get('alternatives_found'))
               print('oem_refs_found=', r.get('oem_refs_found'))
@@ -77,13 +81,15 @@ jobs:
                       bad.append('brand:'+brand)
                   if re.search(r'\b(?:KW|HP)\b', code, re.I) or re.fullmatch(r'20\d{2}-20\d{2}', code):
                       bad.append('code:'+code)
+              if r.get('allowed_product_family') == 'brake-pad' and r.get('fitment_rows_found', 0) == 0:
+                  bad.append('brake-pad-fitment:0')
               if not r.get('sheet_safe'):
                   bad.append('sheet_safe:false')
               if bad:
                   all_bad.extend([f + ':' + x for x in bad])
           print('bad_values=', all_bad)
           if all_bad:
-              raise SystemExit('Final sanitizer emitted noisy values')
+              raise SystemExit('Final sanitizer emitted noisy or incomplete values')
           PY
 
       - name: Upload report artifact
