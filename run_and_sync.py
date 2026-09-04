@@ -6,6 +6,7 @@ import argparse
 
 from cars245_scraper import scrape_part
 from google_sheets_sync import sync_to_sheet
+from crossref_sheet_sync import sync_crossrefs
 
 
 def main() -> None:
@@ -32,6 +33,9 @@ def main() -> None:
         return
 
     result = sync_to_sheet(clean_df, args.part_number)
+    crossref_result = sync_crossrefs(clean_df, args.part_number)
+    result.update(crossref_result)
+
     print("SYNC COMPLETE")
     for key, value in result.items():
         print(f"{key}: {value}")
