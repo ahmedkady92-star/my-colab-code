@@ -12,6 +12,7 @@ on:
     paths:
       - ".github/workflows/cars245-test.yml"
       - "cars245_strict.py"
+      - "cars245_finalize.py"
 
 jobs:
   scrape-test:
@@ -37,32 +38,43 @@ jobs:
           echo "Testing part: $TEST_PART"
           python cars245_strict.py "$TEST_PART" --max-products 50 --delay 0.3 --output-dir output
 
-      - name: Validate strict output
+      - name: Finalize Sheet-safe output
+        run: python cars245_finalize.py --input-dir output
+
+      - name: Validate final output
         run: |
           python - <<'PY'
           import glob, json, re
-          files = glob.glob('output/*_strict.json')
+          files = glob.glob('output/*_final.json')
           if not files:
-              raise SystemExit('No strict JSON produced')
+              raise SystemExit('No final JSON produced')
           r = json.load(open(files[0], encoding='utf-8'))
-          print('product_links_found=', r['product_links_found'])
+          print('allowed_product_family=', r['allowed_product_family'])
           print('alternatives_found=', r['alternatives_found'])
+          print('oem_refs_found=', r['oem_refs_found'])
           print('fitment_rows_found=', r['fitment_rows_found'])
           print('oem_refs=', ' | '.join(r['oem_refs']))
-          for x in r['alternatives']:
-              print('ALT', x['brand'], x['part_number'], sep='\t')
           bad=[]
           for x in r['alternatives']:
+              brand=x['brand']
               code=x['part_number']
+              print('FINAL_ALT', brand, code, x.get('product_type',''), sep='\t')
+              if re.search(r'SHOCK ABSORBER|SUSPENSION STRUT|GAS SPRING', brand, re.I):
+                  bad.append('brand:'+brand)
               if re.search(r'\b(?:KW|HP)\b', code, re.I) or re.fullmatch(r'20\d{2}-20\d{2}', code):
-                  bad.append(code)
-          print('bad_alternative_codes=', bad)
+                  bad.append('code:'+code)
+          for ref in r['oem_refs']:
+              if re.search(r'SACHS|KYB|MONROE|TOPRAN|MEYLE|BILSTEIN', ref, re.I):
+                  bad.append('oem:'+ref)
+          print('bad_values=', bad)
           if bad:
-              raise SystemExit('Strict parser still emitted obvious power/year false positives')
+              raise SystemExit('Final sanitizer still emitted noisy values')
+          if not r.get('sheet_safe'):
+              raise SystemExit('Final output is not marked sheet_safe')
           PY
 
       - name: Upload report artifact
         uses: actions/upload-artifact@v4
         with:
-          name: cars245-strict-test-report
+          name: cars245-final-test-report
           path: output/
