@@ -8,7 +8,23 @@ Organized from the original Colab notebook used for Cars245 research.
 - Collects product links under `/en/item/`.
 - Extracts visible product name, brand, price/currency, OE/cross-reference text, compatibility text, tables, vehicle-related links and detected makes.
 - Saves raw CSV, cleaned CSV and cleaned JSON outputs.
-- Keeps a Colab launcher notebook in `cars245_scraper.ipynb`.
+- Syncs research results into **ELKADY AUTO CRM Knowledge Base**.
+
+## Google Sheet sync
+
+The pipeline writes only to these tabs:
+
+- `38_Product_Identifiers` — primary OEM and Cars245 cross-reference numbers.
+- `39_Vehicle_Fitment` — auto-parsed make/model/year/engine hints, always marked conditional when exact VIN/transmission is not confirmed.
+- `41_AI_Product_Feed` — enriches the AI record while preserving any existing customer price, stock and availability fields.
+
+### Safety behavior
+
+- Supplier cost and customer price are never overwritten by the Cars245 sync.
+- Existing `Customer_Price` is preserved.
+- New products are created with `AI_Eligible=FALSE` until ELKADY AUTO confirms price and fitment.
+- Cars245 auto-parsed fitment is marked `Needs VIN / manual verification` when exact application is not certain.
+- Duplicate identifiers and fitment rows are skipped using normalized IDs.
 
 ## Install
 
@@ -16,16 +32,26 @@ Organized from the original Colab notebook used for Cars245 research.
 pip install -r requirements.txt
 ```
 
-## Run
+## Scrape only
 
 ```bash
 python cars245_scraper.py "04E 121 600 BE"
 ```
 
+## Scrape + sync to ELKADY CRM
+
+In Google Colab, run:
+
+```bash
+python run_and_sync.py "G 060 162 A2"
+```
+
+On the first sync Colab asks you to authorize your Google account. The code uses that session to write to the existing ELKADY AUTO CRM spreadsheet; no Google password or service-account secret is stored in GitHub.
+
 Optional:
 
 ```bash
-python cars245_scraper.py "G 060 162 A2" --max-products 20 --delay 1 --output-dir output
+python run_and_sync.py "04E 121 600 BE" --max-products 20 --delay 1 --output-dir output
 ```
 
 ## Important fitment rule
