@@ -8,6 +8,7 @@ on:
         required: true
         default: "4F0 413 031 AL"
   push:
+    branches: [main]
     paths:
       - ".github/workflows/cars245-test.yml"
 
