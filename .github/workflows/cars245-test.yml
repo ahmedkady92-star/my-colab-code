@@ -1,0 +1,75 @@
+name: Cars245 Test
+
+on:
+  workflow_dispatch:
+    inputs:
+      part_number:
+        description: "Part number to test"
+        required: true
+        default: "4F0 413 031 AL"
+  push:
+    paths:
+      - ".github/workflows/cars245-test.yml"
+
+jobs:
+  scrape-test:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    env:
+      TEST_PART: ${{ github.event_name == 'workflow_dispatch' && inputs.part_number || '4F0 413 031 AL' }}
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+
+      - name: Install dependencies
+        run: pip install -r requirements.txt
+
+      - name: Run Cars245 scraper
+        run: |
+          echo "Testing part: $TEST_PART"
+          python cars245_scraper.py "$TEST_PART" --max-products 50 --delay 0.5 --output-dir output
+
+      - name: Build test summary
+        run: |
+          python - <<'PY'
+          import glob
+          import pandas as pd
+          files = glob.glob('output/*_clean.csv')
+          print(f'clean_csv_files={len(files)}')
+          if not files:
+              raise SystemExit('No clean CSV produced')
+          df = pd.read_csv(files[0]).fillna('')
+          print(f'rows={len(df)}')
+          if 'brand' in df.columns:
+              brands = [x for x in df['brand'].astype(str).unique().tolist() if x]
+              print('brands=' + ' | '.join(brands))
+          if 'part_numbers' in df.columns:
+              vals=[]
+              for cell in df['part_numbers'].astype(str):
+                  for x in cell.split('|'):
+                      x=x.strip()
+                      if x and x not in vals:
+                          vals.append(x)
+              print(f'unique_part_numbers={len(vals)}')
+              print('part_numbers=' + ' | '.join(vals[:150]))
+          if 'detected_vehicles' in df.columns:
+              makes=[]
+              for cell in df['detected_vehicles'].astype(str):
+                  for x in cell.split('|'):
+                      x=x.strip()
+                      if x and x not in makes:
+                          makes.append(x)
+              print('vehicle_makes=' + ' | '.join(makes))
+          PY
+
+      - name: Upload report artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: cars245-test-report
+          path: output/
