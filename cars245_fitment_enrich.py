@@ -1,15 +1,9 @@
 #!/usr/bin/env python3
-"""Enrich Cars245 strict JSON with fitment rows from brake-pad compatibility text.
+"""Enrich Cars245 strict JSON with brake-pad fitment safely.
 
-Cars245 brake-pad pages expose vehicle compatibility in text that is often
-concatenated inside HTML containers, for example:
-SKODA SUPERB III (3V3)DPCA Petrol 1.5 150hp 110kw 2017-now
-Important notes:Fitting Position: Rear Axle; For PR number: 1KU
-
-This script reconstructs the page text, extracts only vehicle/application
-records with fuel + hp + kW + year-range signatures, attaches the immediately
-following Important notes, and writes the result back into *_strict.json before
-final sanitization.
+Only Cars245 brake-pad pages that explicitly reference the searched OEM/part
+number are allowed to contribute vehicle fitment. This prevents unrelated
+brake-pad pages returned in broad Cars245 search results from polluting the CRM.
 """
 from __future__ import annotations
 
@@ -30,16 +24,11 @@ VEHICLE_MAKES = (
     "BMW", "LAND ROVER", "JAGUAR",
 )
 MAKE_ALT = "|".join(sorted((re.escape(x) for x in VEHICLE_MAKES), key=len, reverse=True))
-YEAR_RANGE_RE = re.compile(r"\b((?:19|20)\d{2})\s*[-–]\s*((?:19|20)\d{2}|NOW|CURRENT)\b", re.I)
-FUEL_RE = r"(?:Petrol/Electric|Diesel/Electric|Petrol|Diesel|CNG|Electric)"
+FUEL_RE = r"(?:Petrol/Compressed Natural Gas \(CNG\)|Petrol/Ethanol|Petrol/Electric|Diesel/Electric|Petrol|Diesel|CNG|Electric)"
 
-# Compatibility rows on Cars245 contain a vehicle make/model, engine/fuel,
-# displacement, horsepower, kilowatts and a model-year range. Requiring all of
-# those tokens prevents alternative-product/OEM lists from being mistaken for
-# vehicle fitment.
 VEHICLE_ENTRY_RE = re.compile(
     rf"(?P<entry>\b(?P<make>{MAKE_ALT})\s+"
-    rf"(?:(?!\bImportant\s+notes\s*:).){{1,220}}?"
+    rf"(?:(?!\bImportant\s+notes\s*:).){{1,260}}?"
     rf"\b{FUEL_RE}\b\s+"
     rf"\d{{1,2}}(?:[.,]\d+)?\s+"
     rf"\d{{2,4}}\s*hp\s+\d{{2,4}}\s*kw\s+"
@@ -52,6 +41,10 @@ NEXT_VEHICLE_RE = re.compile(rf"\b(?:{MAKE_ALT})\s+", re.I)
 
 def clean(s: str) -> str:
     return re.sub(r"\s+", " ", str(s)).strip()
+
+
+def norm(s: str) -> str:
+    return re.sub(r"[^A-Z0-9]", "", str(s).upper())
 
 
 def normalize_make(make: str) -> str:
@@ -69,29 +62,34 @@ def is_brake_pad_url(url: str) -> bool:
     )
 
 
+def page_references_search_part(html: str, search_part: str) -> bool:
+    """Require the searched OEM/part number to appear in Cars245 page text.
+
+    This is intentionally strict. A same-type product page is not enough; it
+    must explicitly contain the searched part number in the visible page data,
+    normally in the product heading or OE/cross-reference section.
+    """
+    target = norm(search_part)
+    if not target:
+        return False
+    soup = BeautifulSoup(html, "html.parser")
+    page_text = norm(" ".join(soup.stripped_strings))
+    return target in page_text
+
+
 def _following_notes(text: str, end: int) -> str:
-    """Return only the Important notes block immediately following an entry."""
-    tail = text[end:end + 1200].lstrip(" |:-")
+    tail = text[end:end + 1400].lstrip(" |:-")
     if not re.match(r"Important\s+notes\s*:", tail, re.I):
         return ""
-
-    # Stop before the next vehicle entry. This preserves PR codes, fitting
-    # position, construction-year constraints and engine-number rules.
     nxt = NEXT_VEHICLE_RE.search(tail, 1)
     if nxt:
         tail = tail[:nxt.start()]
-    # Defensive limit in case the source markup has lost separators.
-    tail = tail[:900]
-    return clean(tail)
+    return clean(tail[:1000])
 
 
 def extract_text_fitments(html: str, url: str) -> list[dict]:
     soup = BeautifulSoup(html, "html.parser")
-
-    # Cars245 frequently splits one compatibility row across several HTML text
-    # nodes. Joining stripped_strings recreates the visible sequence reliably.
     text = clean(" ".join(soup.stripped_strings))
-
     rows, seen = [], set()
     for m in VEHICLE_ENTRY_RE.finditer(text):
         make = normalize_make(m.group("make"))
@@ -112,28 +110,34 @@ def extract_text_fitments(html: str, url: str) -> list[dict]:
     return rows
 
 
-def enrich_file(path: Path, session: requests.Session, max_urls: int) -> tuple[int, int]:
+def enrich_file(path: Path, session: requests.Session, max_urls: int) -> tuple[int, int, int]:
     data = json.loads(path.read_text(encoding="utf-8"))
+    search_part = str(data.get("search_part", "")).strip()
     existing = list(data.get("fitments", []))
     seen = {
         (x.get("vehicle_make", ""), x.get("fitment_text", "").upper())
         for x in existing
     }
 
-    urls = []
+    candidate_urls = []
     for item in data.get("alternatives", []):
         url = str(item.get("url", "")).strip()
-        if url and is_brake_pad_url(url) and url not in urls:
-            urls.append(url)
-        if len(urls) >= max_urls:
-            break
+        if url and is_brake_pad_url(url) and url not in candidate_urls:
+            candidate_urls.append(url)
 
-    added = 0
-    for url in urls:
+    checked = matched = added = 0
+    for url in candidate_urls:
+        if matched >= max_urls:
+            break
         r = session.get(url, timeout=30)
         r.raise_for_status()
+        checked += 1
+        if not page_references_search_part(r.text, search_part):
+            print(f"FITMENT_SKIP {url}: searched_part_not_referenced")
+            continue
+        matched += 1
         extracted = extract_text_fitments(r.text, url)
-        print(f"FITMENT_URL {url}: extracted={len(extracted)}")
+        print(f"FITMENT_URL {url}: matched_search_part=yes extracted={len(extracted)}")
         for row in extracted:
             key = (row["vehicle_make"], row["fitment_text"].upper())
             if key in seen:
@@ -142,17 +146,18 @@ def enrich_file(path: Path, session: requests.Session, max_urls: int) -> tuple[i
             existing.append(row)
             added += 1
 
-    if urls and (data.get("allowed_product_family") in ("", None)):
+    if matched and (data.get("allowed_product_family") in ("", None)):
         data["allowed_product_family"] = "brake-pad"
     data["fitments"] = existing
     data["fitment_rows_found"] = len(existing)
     data["fitment_enrichment"] = {
-        "method": "Cars245 reconstructed vehicle compatibility text",
-        "brake_pad_urls_checked": len(urls),
+        "method": "Cars245 brake-pad pages explicitly referencing searched OEM",
+        "candidate_urls_checked": checked,
+        "matched_search_part_urls": matched,
         "rows_added": added,
     }
     path.write_text(json.dumps(data, ensure_ascii=False, indent=2), encoding="utf-8")
-    return len(urls), added
+    return checked, matched, added
 
 
 def main() -> None:
@@ -167,8 +172,8 @@ def main() -> None:
     if not files:
         raise SystemExit("No *_strict.json files found")
     for f in files:
-        urls, added = enrich_file(f, s, args.max_urls)
-        print(f"FITMENT_ENRICH {f.name}: urls={urls} added={added}")
+        checked, matched, added = enrich_file(f, s, args.max_urls)
+        print(f"FITMENT_ENRICH {f.name}: checked={checked} matched={matched} added={added}")
 
 
 if __name__ == "__main__":
