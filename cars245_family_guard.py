@@ -13,6 +13,8 @@ CATEGORY_FAMILIES = {
     "Engine Parts": {"engine-mount", "transmission-mount", "belt", "timing-belt", "timing-chain", "belt-tensioner"},
     "Suspension/Chassis": {"shock-absorber", "control-arm", "wheel-bearing"},
     "Suspension/Steering": {"shock-absorber", "control-arm", "wheel-bearing"},
+    "Filters": {"oil-filter", "air-filter", "cabin-filter", "fuel-filter"},
+    "Sensors": {"sensor"},
 }
 
 PART_CATEGORY = {
@@ -34,6 +36,16 @@ PART_CATEGORY = {
     "9Y0399153B": "Engine Parts",
     "95840715100": "Suspension/Chassis",
     "PAB19937110": "Engine Parts",
+    "99735193810": "Brake Parts",
+    "99735193804": "Brake Parts",
+    "99735193811": "Brake Parts",
+    "98135193904": "Brake Parts",
+    "98735293901": "Brake Parts",
+    "98735293903": "Brake Parts",
+    "99160916500": "Sensors",
+    "98160916300": "Sensors",
+    "99157237100": "Filters",
+    "982129620A": "Filters",
 }
 
 SLUG_FAMILY_HINTS = {
