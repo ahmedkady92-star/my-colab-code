@@ -10,6 +10,7 @@ from urllib.parse import urlparse
 
 CATEGORY_FAMILIES = {
     "Brake Parts": {"brake-pad", "brake-disc"},
+    "Brake Wear Sensor": {"brake-wear-sensor"},
     "Engine Parts": {"engine-mount", "transmission-mount", "belt", "timing-belt", "timing-chain", "belt-tensioner"},
     "Suspension/Chassis": {"shock-absorber", "control-arm", "wheel-bearing"},
     "Suspension/Steering": {"shock-absorber", "control-arm", "wheel-bearing"},
@@ -42,13 +43,14 @@ PART_CATEGORY = {
     "98135193904": "Brake Parts",
     "98735293901": "Brake Parts",
     "98735293903": "Brake Parts",
-    "99160916500": "Sensors",
-    "98160916300": "Sensors",
+    "99160916500": "Brake Wear Sensor",
+    "98160916300": "Brake Wear Sensor",
     "99157237100": "Filters",
     "982129620A": "Filters",
 }
 
 SLUG_FAMILY_HINTS = {
+    "warning-contact-brake-pad-wear": "brake-wear-sensor",
     "shock-absorber": "shock-absorber",
     "suspension-strut": "shock-absorber",
     "gas-spring": "gas-spring",
