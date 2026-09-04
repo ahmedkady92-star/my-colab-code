@@ -1,15 +1,5 @@
 #!/usr/bin/env python3
-"""Post-parse safety guard for ELKADY AUTO Cars245 batches.
-
-The strict parser can occasionally choose the wrong dominant product family when
-Cars245 search results are noisy. This guard applies CRM-derived category rules
-before enrichment/finalization so unrelated product families cannot contribute
-alternatives or vehicle fitment.
-
-Rules are intentionally conservative: they only allow families compatible with
-the known CRM category. They do not guess a more specific part type when the CRM
-catalog itself is generic.
-"""
+"""Post-parse safety guard for ELKADY AUTO Cars245 batches."""
 from __future__ import annotations
 
 import argparse
@@ -18,7 +8,6 @@ import re
 from pathlib import Path
 from urllib.parse import urlparse
 
-# Family groups compatible with CRM categories used in the current batch.
 CATEGORY_FAMILIES = {
     "Brake Parts": {"brake-pad", "brake-disc"},
     "Engine Parts": {"engine-mount", "transmission-mount", "belt", "timing-belt", "timing-chain", "belt-tensioner"},
@@ -26,8 +15,6 @@ CATEGORY_FAMILIES = {
     "Suspension/Steering": {"shock-absorber", "control-arm", "wheel-bearing"},
 }
 
-# Current CRM batch: category only. This is enough to block cross-category noise
-# such as Water Pump results for a Suspension/Chassis OEM number.
 PART_CATEGORY = {
     "95834105100": "Suspension/Chassis",
     "95834105300": "Suspension/Chassis",
@@ -37,9 +24,18 @@ PART_CATEGORY = {
     "95534306900": "Suspension/Chassis",
     "5QA199555C": "Engine Parts",
     "8K0698451A": "Brake Parts",
+    "8R0698151B": "Brake Parts",
+    "95B615301M": "Brake Parts",
+    "4G0698451H": "Brake Parts",
+    "95B615601G": "Brake Parts",
+    "99735193809": "Brake Parts",
+    "982698451B": "Brake Parts",
+    "98735240101": "Brake Parts",
+    "9Y0399153B": "Engine Parts",
+    "95840715100": "Suspension/Chassis",
+    "PAB19937110": "Engine Parts",
 }
 
-# Slug -> parser family mapping. Keep aligned with cars245_strict.py TYPE_FAMILY.
 SLUG_FAMILY_HINTS = {
     "shock-absorber": "shock-absorber",
     "suspension-strut": "shock-absorber",
@@ -136,17 +132,12 @@ def guard_file(path: Path) -> tuple[int, int, int]:
 
     for item in original_alts:
         fam = family_from_item(item)
-        # Entries without a product type/URL are reference mentions only. Keep
-        # them only when they came from a surviving product URL; otherwise drop
-        # them rather than infer their family.
         url = str(item.get("url", "")).split("?")[0]
         if fam in allowed or (url and url in allowed_urls):
             kept_alts.append(item)
         else:
             rejected.append({"kind": "alternative", "family": fam, "url": item.get("url", ""), "brand": item.get("brand", ""), "part_number": item.get("part_number", "")})
 
-    # Fitment rows must originate from a product URL that survived the category
-    # guard. This prevents a wrong-family page from contributing vehicle rows.
     original_fitments = list(data.get("fitments", []))
     kept_fitments = []
     for row in original_fitments:
