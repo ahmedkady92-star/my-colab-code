@@ -11,6 +11,7 @@ on:
     branches: [main]
     paths:
       - ".github/workflows/cars245-test.yml"
+      - "cars245_strict.py"
 
 jobs:
   scrape-test:
@@ -31,46 +32,37 @@ jobs:
       - name: Install dependencies
         run: pip install -r requirements.txt
 
-      - name: Run Cars245 scraper
+      - name: Run strict Cars245 parser
         run: |
           echo "Testing part: $TEST_PART"
-          python cars245_scraper.py "$TEST_PART" --max-products 50 --delay 0.5 --output-dir output
+          python cars245_strict.py "$TEST_PART" --max-products 50 --delay 0.3 --output-dir output
 
-      - name: Build test summary
+      - name: Validate strict output
         run: |
           python - <<'PY'
-          import glob
-          import pandas as pd
-          files = glob.glob('output/*_clean.csv')
-          print(f'clean_csv_files={len(files)}')
+          import glob, json, re
+          files = glob.glob('output/*_strict.json')
           if not files:
-              raise SystemExit('No clean CSV produced')
-          df = pd.read_csv(files[0]).fillna('')
-          print(f'rows={len(df)}')
-          if 'brand' in df.columns:
-              brands = [x for x in df['brand'].astype(str).unique().tolist() if x]
-              print('brands=' + ' | '.join(brands))
-          if 'part_numbers' in df.columns:
-              vals=[]
-              for cell in df['part_numbers'].astype(str):
-                  for x in cell.split('|'):
-                      x=x.strip()
-                      if x and x not in vals:
-                          vals.append(x)
-              print(f'unique_part_numbers={len(vals)}')
-              print('part_numbers=' + ' | '.join(vals[:150]))
-          if 'detected_vehicles' in df.columns:
-              makes=[]
-              for cell in df['detected_vehicles'].astype(str):
-                  for x in cell.split('|'):
-                      x=x.strip()
-                      if x and x not in makes:
-                          makes.append(x)
-              print('vehicle_makes=' + ' | '.join(makes))
+              raise SystemExit('No strict JSON produced')
+          r = json.load(open(files[0], encoding='utf-8'))
+          print('product_links_found=', r['product_links_found'])
+          print('alternatives_found=', r['alternatives_found'])
+          print('fitment_rows_found=', r['fitment_rows_found'])
+          print('oem_refs=', ' | '.join(r['oem_refs']))
+          for x in r['alternatives']:
+              print('ALT', x['brand'], x['part_number'], sep='\t')
+          bad=[]
+          for x in r['alternatives']:
+              code=x['part_number']
+              if re.search(r'\b(?:KW|HP)\b', code, re.I) or re.fullmatch(r'20\d{2}-20\d{2}', code):
+                  bad.append(code)
+          print('bad_alternative_codes=', bad)
+          if bad:
+              raise SystemExit('Strict parser still emitted obvious power/year false positives')
           PY
 
       - name: Upload report artifact
         uses: actions/upload-artifact@v4
         with:
-          name: cars245-test-report
+          name: cars245-strict-test-report
           path: output/
