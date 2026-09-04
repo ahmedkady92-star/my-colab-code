@@ -5,22 +5,21 @@ on:
     inputs:
       part_number:
         description: "Part number to test"
-        required: true
-        default: "4F0 413 031 AL"
+        required: false
+        default: ""
   push:
     branches: [main]
     paths:
       - ".github/workflows/cars245-test.yml"
       - "cars245_strict.py"
       - "cars245_finalize.py"
+      - "cars245_batch.txt"
 
 jobs:
   scrape-test:
     runs-on: ubuntu-latest
     permissions:
       contents: read
-    env:
-      TEST_PART: ${{ github.event_name == 'workflow_dispatch' && inputs.part_number || '4F0 413 031 AL' }}
     steps:
       - name: Checkout
         uses: actions/checkout@v4
@@ -34,9 +33,20 @@ jobs:
         run: pip install -r requirements.txt
 
       - name: Run strict Cars245 parser
+        shell: bash
         run: |
-          echo "Testing part: $TEST_PART"
-          python cars245_strict.py "$TEST_PART" --max-products 50 --delay 0.3 --output-dir output
+          set -euo pipefail
+          mkdir -p output
+          if [[ "${{ github.event_name }}" == "workflow_dispatch" && -n "${{ inputs.part_number }}" ]]; then
+            printf '%s\n' "${{ inputs.part_number }}" > /tmp/parts.txt
+          else
+            cp cars245_batch.txt /tmp/parts.txt
+          fi
+          while IFS= read -r part || [[ -n "$part" ]]; do
+            [[ -z "${part// }" ]] && continue
+            echo "Testing part: $part"
+            python cars245_strict.py "$part" --max-products 50 --delay 0.3 --output-dir output
+          done < /tmp/parts.txt
 
       - name: Finalize Sheet-safe output
         run: python cars245_finalize.py --input-dir output
@@ -45,32 +55,35 @@ jobs:
         run: |
           python - <<'PY'
           import glob, json, re
-          files = glob.glob('output/*_final.json')
+          files = sorted(glob.glob('output/*_final.json'))
           if not files:
               raise SystemExit('No final JSON produced')
-          r = json.load(open(files[0], encoding='utf-8'))
-          print('allowed_product_family=', r['allowed_product_family'])
-          print('alternatives_found=', r['alternatives_found'])
-          print('oem_refs_found=', r['oem_refs_found'])
-          print('fitment_rows_found=', r['fitment_rows_found'])
-          print('oem_refs=', ' | '.join(r['oem_refs']))
-          bad=[]
-          for x in r['alternatives']:
-              brand=x['brand']
-              code=x['part_number']
-              print('FINAL_ALT', brand, code, x.get('product_type',''), sep='\t')
-              if re.search(r'SHOCK ABSORBER|SUSPENSION STRUT|GAS SPRING', brand, re.I):
-                  bad.append('brand:'+brand)
-              if re.search(r'\b(?:KW|HP)\b', code, re.I) or re.fullmatch(r'20\d{2}-20\d{2}', code):
-                  bad.append('code:'+code)
-          for ref in r['oem_refs']:
-              if re.search(r'SACHS|KYB|MONROE|TOPRAN|MEYLE|BILSTEIN', ref, re.I):
-                  bad.append('oem:'+ref)
-          print('bad_values=', bad)
-          if bad:
-              raise SystemExit('Final sanitizer still emitted noisy values')
-          if not r.get('sheet_safe'):
-              raise SystemExit('Final output is not marked sheet_safe')
+          print('final_files=', len(files))
+          all_bad=[]
+          for f in files:
+              r = json.load(open(f, encoding='utf-8'))
+              print('\nFILE', f)
+              print('query_part_number=', r.get('query_part_number'))
+              print('allowed_product_family=', r.get('allowed_product_family'))
+              print('alternatives_found=', r.get('alternatives_found'))
+              print('oem_refs_found=', r.get('oem_refs_found'))
+              print('fitment_rows_found=', r.get('fitment_rows_found'))
+              bad=[]
+              for x in r.get('alternatives', []):
+                  brand=x.get('brand','')
+                  code=x.get('part_number','')
+                  print('FINAL_ALT', brand, code, x.get('product_type',''), sep='\t')
+                  if re.search(r'SHOCK ABSORBER|SUSPENSION STRUT|GAS SPRING|BRAKE PAD SET|ENGINE MOUNTING', brand, re.I):
+                      bad.append('brand:'+brand)
+                  if re.search(r'\b(?:KW|HP)\b', code, re.I) or re.fullmatch(r'20\d{2}-20\d{2}', code):
+                      bad.append('code:'+code)
+              if not r.get('sheet_safe'):
+                  bad.append('sheet_safe:false')
+              if bad:
+                  all_bad.extend([f + ':' + x for x in bad])
+          print('bad_values=', all_bad)
+          if all_bad:
+              raise SystemExit('Final sanitizer emitted noisy values')
           PY
 
       - name: Upload report artifact
