@@ -1,18 +1,18 @@
 #!/usr/bin/env python3
 """Final sanitizer for Cars245 strict-parser output.
 
-Takes the strict JSON/CSV files and produces Sheet-safe Cars245-only data:
-- clean Brand -> Part Number records,
-- conservative OEM references,
+Produces Sheet-safe Cars245-only data:
+- direct search-result alternatives,
+- branded aftermarket references found in Cars245 reference blocks,
+- clean OEM revisions/supersessions,
 - unique fitment rows.
 
-The sanitizer is deliberately conservative: uncertain values are dropped rather
-than written to the CRM as verified identifiers.
+The sanitizer is conservative: uncertain values are dropped rather than written
+into the CRM as verified identifiers.
 """
 from __future__ import annotations
 
 import argparse
-import glob
 import json
 import re
 from pathlib import Path
@@ -27,9 +27,17 @@ PRODUCT_TYPE_WORDS = (
     "V-RIBBED BELT", "TIMING BELT SET", "TIMING CHAIN", "BELT TENSIONER",
 )
 BAD_WORDS = re.compile(
-    r"(?:\bKW\b|\bHP\b|AWARDS|GUIDES|CARS245|ABOUT|BUDGET|YOUR|ASK|MID|\bOEM\b$)",
+    r"(?:\bKW\b|\bHP\b|AWARDS|GUIDES|CARS245|ABOUT|BUDGET|YOUR|ASK|MID|UNKNOWN|\bOEM\b$)",
     re.I,
 )
+VEHICLE_OR_OE_BRANDS = {
+    "AUDI", "VOLKSWAGEN", "VW", "SKODA", "SEAT", "PORSCHE", "BENTLEY",
+    "BMW", "LAND ROVER", "JAGUAR",
+}
+BRAND_NOISE = {
+    "UNKNOWN", "SHOCK", "ABSORBER", "SUSPENSION", "STRUT", "ORIGINAL",
+    "NUMBER", "REFERENCE", "REPLACEMENT", "OEM", "OE",
+}
 
 
 def norm(value: str) -> str:
@@ -54,7 +62,6 @@ def clean_code(value: str) -> str:
     value = str(value).upper().strip()
     value = re.sub(r"^[\s(\[{<]+|[\s)\]}>]+$", "", value)
     value = re.sub(r"\s+", " ", value).strip(" |,;:")
-    # Numeric manufacturer codes are often displayed as grouped chunks.
     if re.fullmatch(r"(?:\d{2,6}\s+){1,3}\d{2,6}", value):
         value = value.replace(" ", "")
     return value
@@ -62,6 +69,8 @@ def clean_code(value: str) -> str:
 
 def valid_alt(brand: str, code: str) -> bool:
     if not brand or not code or BAD_WORDS.search(brand) or BAD_WORDS.search(code):
+        return False
+    if brand in VEHICLE_OR_OE_BRANDS or brand in BRAND_NOISE:
         return False
     compact = norm(code)
     if len(compact) < 4 or len(compact) > 24 or not re.search(r"\d", compact):
@@ -73,16 +82,15 @@ def valid_alt(brand: str, code: str) -> bool:
     return True
 
 
+def format_vag(n: str) -> str:
+    """Format compact VAG OE number, e.g. 4F0413031AA -> 4F0 413 031 AA."""
+    if len(n) < 9:
+        return n
+    return " ".join(x for x in (n[:3], n[3:6], n[6:9], n[9:]) if x)
+
+
 def clean_oem_refs(primary: str, refs: list[str]) -> list[str]:
-    """Keep only high-confidence OE references.
-
-    For VAG-style numbers, require the same 9-character base as the searched
-    number. This keeps revisions/supersessions such as 4F0413031AA/AB/AQ while
-    rejecting page text such as '05 SACHS 312638'.
-
-    For other formats, use a conservative structural filter and reject values
-    containing obvious brand/description words.
-    """
+    """Recover high-confidence OE revisions from noisy Cars245 block text."""
     p = norm(primary)
     vag = bool(re.fullmatch(r"[0-9A-Z]{3}\d{6}[0-9A-Z]{0,3}", p))
     base = p[:9] if vag else ""
@@ -90,24 +98,68 @@ def clean_oem_refs(primary: str, refs: list[str]) -> list[str]:
 
     for raw in refs:
         raw = clean_code(raw)
-        n = norm(raw)
-        if not n or n in seen:
-            continue
-        if BAD_WORDS.search(raw):
-            continue
         if vag:
-            if not n.startswith(base):
+            # Cars245 block text often prefixes the OE number with AUDI/VOLKSWAGEN.
+            nraw = norm(raw)
+            m = re.search(re.escape(base) + r"[0-9A-Z]{0,3}", nraw)
+            if not m:
                 continue
-            if not re.fullmatch(re.escape(base) + r"[0-9A-Z]{0,3}", n):
+            n = m.group(0)
+            if n in seen:
                 continue
-        else:
-            if len(n) < 6 or len(n) > 18 or not re.search(r"\d", n):
-                continue
-            # Reject phrases that clearly contain manufacturer names/text.
-            if len(raw.split()) > 4:
-                continue
+            seen.add(n)
+            out.append(format_vag(n))
+            continue
+
+        n = norm(raw)
+        if not n or n in seen or BAD_WORDS.search(raw):
+            continue
+        if len(n) < 6 or len(n) > 18 or not re.search(r"\d", n):
+            continue
+        if len(raw.split()) > 4:
+            continue
         seen.add(n)
         out.append(raw)
+    return out
+
+
+def extract_branded_refs(refs: list[str]) -> list[dict]:
+    """Recover Cars245 aftermarket references such as SACHS 312638.
+
+    The input is already restricted by the strict parser to OE/cross-reference/
+    alternative blocks. This function only turns clear BRAND + CODE pairs into
+    aftermarket records and ignores vehicle/OE brands.
+    """
+    out, seen = [], set()
+    pattern = re.compile(
+        r"\b([A-Z][A-Z&.+-]*(?:\s+[A-Z][A-Z&.+-]*){0,2})\s+"
+        r"([A-Z0-9][A-Z0-9./_-]{3,20})\b",
+        re.I,
+    )
+    for raw in refs:
+        text = re.sub(r"^\s*\d{1,3}\s+", "", str(raw).upper()).strip()
+        for m in pattern.finditer(text):
+            brand = clean_brand(m.group(1))
+            code = clean_code(m.group(2))
+            # Trim accidental leading descriptor words from a brand phrase.
+            bt = brand.split()
+            while bt and bt[0] in BRAND_NOISE:
+                bt.pop(0)
+            brand = " ".join(bt)
+            if not valid_alt(brand, code):
+                continue
+            key = (brand, norm(code))
+            if key in seen:
+                continue
+            seen.add(key)
+            out.append({
+                "brand": brand,
+                "part_number": code,
+                "product_type": "",
+                "url": "",
+                "source": "Cars245",
+                "relation": "cross_reference",
+            })
     return out
 
 
@@ -119,14 +171,23 @@ def finalize(input_dir: str, output_dir: str | None = None) -> dict:
     json_files = sorted(input_path.glob("*_strict.json"))
     if not json_files:
         raise SystemExit("No *_strict.json found")
-    src = json_files[0]
-    report = json.loads(src.read_text(encoding="utf-8"))
+    report = json.loads(json_files[0].read_text(encoding="utf-8"))
     primary = report.get("search_part", "")
     allowed_family = report.get("allowed_product_family", "")
+    direct_count = int(report.get("product_links_found", 0) or 0)
+
+    # The strict parser stores direct search-result products first. These are the
+    # strongest Cars245 alternatives for the searched number. Do not carry over
+    # the later same-family carousel/sibling links automatically.
+    direct_items = list(report.get("alternatives", []))[:direct_count]
+    explicit_items = [
+        x for x in report.get("alternatives", [])[direct_count:]
+        if not str(x.get("url", "")).strip()
+    ]
 
     cleaned_alts = []
     seen_alts = set()
-    for item in report.get("alternatives", []):
+    for item in direct_items + explicit_items:
         brand = clean_brand(item.get("brand", ""))
         code = clean_code(item.get("part_number", ""))
         ptype = re.sub(r"\s+", " ", str(item.get("product_type", ""))).strip()
@@ -143,7 +204,16 @@ def finalize(input_dir: str, output_dir: str | None = None) -> dict:
             "product_type": ptype,
             "url": url,
             "source": "Cars245",
+            "relation": "direct_alternative" if url else "cross_reference",
         })
+
+    # Add clear Brand -> Code references found in Cars245 reference blocks.
+    for item in extract_branded_refs(report.get("oem_refs", [])):
+        key = (item["brand"], norm(item["part_number"]))
+        if key in seen_alts:
+            continue
+        seen_alts.add(key)
+        cleaned_alts.append(item)
 
     cleaned_fitments = []
     seen_fit = set()
@@ -169,6 +239,7 @@ def finalize(input_dir: str, output_dir: str | None = None) -> dict:
     final = {
         "search_part": primary,
         "allowed_product_family": allowed_family,
+        "direct_product_links": direct_count,
         "alternatives_found": len(cleaned_alts),
         "oem_refs_found": len(oem_refs),
         "fitment_rows_found": len(cleaned_fitments),
@@ -194,12 +265,13 @@ def main() -> None:
     p.add_argument("--output-dir", default=None)
     args = p.parse_args()
     r = finalize(args.input_dir, args.output_dir)
+    print(f"FINAL direct_product_links={r['direct_product_links']}")
     print(f"FINAL alternatives_found={r['alternatives_found']}")
     print(f"FINAL oem_refs_found={r['oem_refs_found']}")
     print(f"FINAL fitment_rows_found={r['fitment_rows_found']}")
     print("FINAL oem_refs=" + " | ".join(r["oem_refs"]))
     for x in r["alternatives"]:
-        print(f"FINAL_ALT\t{x['brand']}\t{x['part_number']}\t{x['product_type']}")
+        print(f"FINAL_ALT\t{x['brand']}\t{x['part_number']}\t{x['product_type']}\t{x['relation']}")
 
 
 if __name__ == "__main__":
