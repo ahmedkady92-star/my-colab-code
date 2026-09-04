@@ -12,6 +12,7 @@ on:
     paths:
       - ".github/workflows/cars245-test.yml"
       - "cars245_strict.py"
+      - "cars245_family_guard.py"
       - "cars245_fitment_enrich.py"
       - "cars245_finalize.py"
       - "cars245_batch.txt"
@@ -49,6 +50,9 @@ jobs:
             python cars245_strict.py "$part" --max-products 50 --delay 0.3 --output-dir output
           done < /tmp/parts.txt
 
+      - name: Apply CRM product family guard
+        run: python cars245_family_guard.py --input-dir output
+
       - name: Enrich brake pad fitment
         run: python cars245_fitment_enrich.py --input-dir output --max-urls 8
 
@@ -69,6 +73,7 @@ jobs:
               print('\nFILE', f)
               print('search_part=', r.get('search_part'))
               print('allowed_product_family=', r.get('allowed_product_family'))
+              print('family_guard=', r.get('family_guard'))
               print('alternatives_found=', r.get('alternatives_found'))
               print('oem_refs_found=', r.get('oem_refs_found'))
               print('fitment_rows_found=', r.get('fitment_rows_found'))
@@ -81,6 +86,17 @@ jobs:
                       bad.append('brand:'+brand)
                   if re.search(r'\b(?:KW|HP)\b', code, re.I) or re.fullmatch(r'20\d{2}-20\d{2}', code):
                       bad.append('code:'+code)
+              guard = r.get('family_guard') or {}
+              if guard.get('status') == 'applied':
+                  cat = guard.get('crm_category','')
+                  if cat.startswith('Suspension'):
+                      for x in r.get('alternatives', []):
+                          if re.search(r'water[- ]?pump|thermostat|timing[- ]?belt', (x.get('product_type','')+' '+x.get('url','')), re.I):
+                              bad.append('cross-category-suspension:'+x.get('url',''))
+                  if cat == 'Brake Parts':
+                      for x in r.get('alternatives', []):
+                          if re.search(r'water[- ]?pump|engine[- ]?mount|transmission[- ]?mount', (x.get('product_type','')+' '+x.get('url','')), re.I):
+                              bad.append('cross-category-brake:'+x.get('url',''))
               if r.get('allowed_product_family') == 'brake-pad' and r.get('fitment_rows_found', 0) == 0:
                   bad.append('brake-pad-fitment:0')
               if not r.get('sheet_safe'):
