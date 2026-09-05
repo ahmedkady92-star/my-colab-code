@@ -47,6 +47,16 @@ PART_CATEGORY = {
     "98160916300": "Brake Wear Sensor",
     "99157237100": "Filters",
     "982129620A": "Filters",
+    "8R0698151AA": "Brake Parts",
+    "8R0698151AB": "Brake Parts",
+    "8R0698151C": "Brake Parts",
+    "8R0698151D": "Brake Parts",
+    "4H0698451A": "Brake Parts",
+    "4H0698451C": "Brake Parts",
+    "4H0698451D": "Brake Parts",
+    "4H0615601K": "Brake Parts",
+    "4G0615301Q": "Brake Parts",
+    "4G0615301AF": "Brake Parts",
 }
 
 SLUG_FAMILY_HINTS = {
