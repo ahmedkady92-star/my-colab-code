@@ -8,7 +8,9 @@ BRANDS = {
     "cupra": {"search_path": "/en/catalog/car-audi/?q={query}", "group": "vw", "catalog_fallback": "vag"},
     "porsche": {"search_path": "/en/catalog/car-porsc/?q={query}", "group": "vw"},
     "landrover": {"search_path": "/en/catalog/car-landrover/?q={query}", "group": "jlr"},
+    "jaguar": {"search_path": "/en/catalog/car-jagua/?q={query}", "group": "jlr"},
     "bmw": {"search_path": "/en/catalog/car-bmw/?q={query}", "group": "bmw"},
+    "mercedes": {"search_path": "/en/catalog/car-merce/?q={query}", "group": "mercedes"},
 }
 
 BRAKE_PAD_URL_TOKENS = (
