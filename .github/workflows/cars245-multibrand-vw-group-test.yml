@@ -1,0 +1,97 @@
+name: Cars245 Multibrand VW Group Test
+
+on:
+  push:
+    branches:
+      - cars245-multibrand-integration
+    paths:
+      - cars245_brands.py
+      - cars245_multibrand.py
+      - .github/workflows/cars245-multibrand-vw-group-test.yml
+  workflow_dispatch:
+
+jobs:
+  multibrand-regression:
+    runs-on: ubuntu-24.04
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+
+      - name: Install dependencies
+        run: pip install -r requirements.txt
+
+      - name: Confirm legacy parser default unchanged
+        run: |
+          python - <<'PY'
+          import cars245_strict
+          assert cars245_strict.SEARCH_PATH == '/en/catalog/car-audi/?q={query}', cars245_strict.SEARCH_PATH
+          print('legacy SEARCH_PATH unchanged')
+          PY
+
+      - name: Run VW Group multibrand parsers
+        run: |
+          set -euo pipefail
+          mkdir -p output-vw/audi output-vw/volkswagen output-vw/skoda output-vw/seat output-vw/cupra output-vw/porsche
+          python cars245_multibrand.py audi '8K0 698 151 F' --max-products 20 --delay 0.2 --output-dir output-vw/audi
+          python cars245_multibrand.py volkswagen '5Q0 698 151 F' --max-products 20 --delay 0.2 --output-dir output-vw/volkswagen
+          python cars245_multibrand.py skoda '5Q0 698 151 F' --max-products 20 --delay 0.2 --output-dir output-vw/skoda
+          python cars245_multibrand.py seat '5Q0 698 151 F' --max-products 20 --delay 0.2 --output-dir output-vw/seat
+          python cars245_multibrand.py cupra '5WA 698 151 AK' --max-products 20 --delay 0.2 --output-dir output-vw/cupra
+          python cars245_multibrand.py porsche '997 351 938 06' --max-products 20 --delay 0.2 --output-dir output-vw/porsche
+
+      - name: Enrich VW Group fitment
+        run: |
+          for d in output-vw/audi output-vw/volkswagen output-vw/skoda output-vw/seat output-vw/cupra output-vw/porsche; do
+            python cars245_fitment_enrich.py --input-dir "$d" --max-urls 6
+          done
+
+      - name: Validate VW Group results
+        run: |
+          python - <<'PY'
+          import glob, json
+          brands = ['audi','volkswagen','skoda','seat','cupra','porsche']
+          for brand in brands:
+              files = glob.glob(f'output-vw/{brand}/*_strict.json')
+              assert len(files) == 1, (brand, files)
+              r = json.load(open(files[0], encoding='utf-8'))
+              print(brand, 'links=', r['product_links_found'], 'family=', r['allowed_product_family'], 'alts=', r['alternatives_found'], 'fitments=', r['fitment_rows_found'])
+              assert r['product_links_found'] > 0, (brand, r)
+              assert r['allowed_product_family'] == 'brake-pad', (brand, r['allowed_product_family'])
+              assert r['alternatives_found'] > 0, (brand, r)
+              assert r['fitment_rows_found'] > 0, (brand, r)
+          PY
+
+      - name: Run non-VW regression
+        run: |
+          set -euo pipefail
+          mkdir -p output-other/landrover output-other/bmw
+          python cars245_multibrand.py landrover LR019618 --max-products 20 --delay 0.2 --output-dir output-other/landrover
+          python cars245_fitment_enrich.py --input-dir output-other/landrover --max-urls 6
+          python cars245_multibrand.py bmw 34116878876 --max-products 20 --delay 0.2 --output-dir output-other/bmw
+          python cars245_fitment_enrich.py --input-dir output-other/bmw --max-urls 6
+
+      - name: Validate non-VW regression
+        run: |
+          python - <<'PY'
+          import glob, json
+          for brand in ['landrover','bmw']:
+              f = glob.glob(f'output-other/{brand}/*_strict.json')[0]
+              r = json.load(open(f, encoding='utf-8'))
+              print(brand, 'links=', r['product_links_found'], 'family=', r['allowed_product_family'], 'alts=', r['alternatives_found'], 'fitments=', r['fitment_rows_found'])
+              assert r['product_links_found'] > 0
+              assert r['allowed_product_family'] == 'brake-pad'
+              assert r['fitment_rows_found'] > 0
+          PY
+
+      - name: Upload multibrand report
+        uses: actions/upload-artifact@v4
+        with:
+          name: cars245-multibrand-vw-group-report
+          path: |
+            output-vw/
+            output-other/
