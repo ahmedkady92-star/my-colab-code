@@ -19,7 +19,7 @@ import requests
 from bs4 import BeautifulSoup
 
 HEADERS={"User-Agent":"Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 Chrome/139 Safari/537.36","Accept-Language":"en-US,en;q=0.9"}
-VEHICLE_MAKES=("MERCEDES-BENZ","MERCEDES","AUDI","VOLKSWAGEN","VW","SKODA","SEAT","PORSCHE","BENTLEY","BMW","LAND ROVER","JAGUAR")
+VEHICLE_MAKES=("MERCEDES-BENZ","MERCEDES","AUDI","VOLKSWAGEN","VW","SKODA","SEAT","PORSCHE","BENTLEY","BMW","LAND ROVER","JAGUAR","VOLVO")
 MAKE_ALT="|".join(sorted((re.escape(x) for x in VEHICLE_MAKES),key=len,reverse=True))
 FUEL_RE=r"(?:Petrol/Compressed Natural Gas \(CNG\)|Petrol/Ethanol|Petrol/Electric|Diesel/Electric|Petrol|Diesel|CNG|Electric)"
 VEHICLE_ENTRY_RE=re.compile(rf"(?P<entry>\b(?P<make>{MAKE_ALT})\s+(?:(?!\bImportant\s+notes\s*:).){{1,260}}?\b{FUEL_RE}\b\s+\d{{1,2}}(?:[.,]\d+)?\s+\d{{2,4}}\s*hp\s+\d{{2,4}}\s*kw\s+(?P<year_from>(?:19|20)\d{{2}})\s*[-–]\s*(?P<year_to>(?:(?:19|20)\d{{2}}|now|current))\b)",re.I)
@@ -51,7 +51,7 @@ def is_exact_oem_url(url,search_part):
     target=norm(search_part)
     if not target or target not in norm(url): return False
     u=url.lower()
-    return any(x in u for x in ("audi-volkswagen","skoda-","seat-","mercedes-benz-","jaguar-","land-rover-","porsche-"))
+    return any(x in u for x in ("audi-volkswagen","skoda-","seat-","mercedes-benz-","jaguar-","land-rover-","porsche-","bentley-","volvo-"))
 
 def _following_notes(text,end):
     tail=text[end:end+1400].lstrip(" |:-")
