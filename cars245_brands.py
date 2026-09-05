@@ -1,3 +1,4 @@
+# Central Cars245 catalog configuration. Keep brand-specific routing here so the shared parser stays unchanged.
 BRANDS = {
     "audi": {"search_path": "/en/catalog/car-audi/?q={query}", "group": "vw"},
     "volkswagen": {"search_path": "/en/catalog/car-volkswagen/?q={query}", "group": "vw"},
