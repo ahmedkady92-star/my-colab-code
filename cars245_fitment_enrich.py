@@ -19,7 +19,7 @@ import requests
 from bs4 import BeautifulSoup
 
 HEADERS={"User-Agent":"Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 Chrome/139 Safari/537.36","Accept-Language":"en-US,en;q=0.9"}
-VEHICLE_MAKES=("AUDI","VOLKSWAGEN","VW","SKODA","SEAT","PORSCHE","BENTLEY","BMW","LAND ROVER","JAGUAR")
+VEHICLE_MAKES=("MERCEDES-BENZ","MERCEDES","AUDI","VOLKSWAGEN","VW","SKODA","SEAT","PORSCHE","BENTLEY","BMW","LAND ROVER","JAGUAR")
 MAKE_ALT="|".join(sorted((re.escape(x) for x in VEHICLE_MAKES),key=len,reverse=True))
 FUEL_RE=r"(?:Petrol/Compressed Natural Gas \(CNG\)|Petrol/Ethanol|Petrol/Electric|Diesel/Electric|Petrol|Diesel|CNG|Electric)"
 VEHICLE_ENTRY_RE=re.compile(rf"(?P<entry>\b(?P<make>{MAKE_ALT})\s+(?:(?!\bImportant\s+notes\s*:).){{1,260}}?\b{FUEL_RE}\b\s+\d{{1,2}}(?:[.,]\d+)?\s+\d{{2,4}}\s*hp\s+\d{{2,4}}\s*kw\s+(?P<year_from>(?:19|20)\d{{2}})\s*[-–]\s*(?P<year_to>(?:(?:19|20)\d{{2}}|now|current))\b)",re.I)
@@ -29,10 +29,17 @@ APP_MARKER_RE=re.compile(r"Brand\s+Model\s+Engine\s+code\s+Fuel\s+Displacement\s
 def clean(s): return re.sub(r"\s+"," ",str(s)).strip()
 def norm(s): return re.sub(r"[^A-Z0-9]","",str(s).upper())
 def normalize_make(make):
-    make=make.upper().strip(); return "VOLKSWAGEN" if make=="VW" else make
+    make=make.upper().strip()
+    if make=="VW": return "VOLKSWAGEN"
+    if make=="MERCEDES": return "MERCEDES-BENZ"
+    return make
 
 def is_brake_pad_url(url):
-    u=url.lower(); return any(x in u for x in ("brake-pad-set-disc-brake","brake-pads-for-disk-brake","brake-pads-with","brk-lining"))
+    u=url.lower()
+    return any(x in u for x in (
+        "brake-pad-set-disc-brake","brake-pads-for-disk-brake","brake-pads-with",
+        "brk-lining","disk-brake-pad","disc-brake-pad","ts-brake-pad","brake-pad"
+    ))
 
 def page_references_search_part(html,search_part):
     target=norm(search_part)
@@ -42,7 +49,9 @@ def page_references_search_part(html,search_part):
 
 def is_exact_oem_url(url,search_part):
     target=norm(search_part)
-    return bool(target and target in norm(url) and ("audi-volkswagen" in url.lower() or "skoda-" in url.lower() or "seat-" in url.lower()))
+    if not target or target not in norm(url): return False
+    u=url.lower()
+    return any(x in u for x in ("audi-volkswagen","skoda-","seat-","mercedes-benz-","jaguar-","land-rover-","porsche-"))
 
 def _following_notes(text,end):
     tail=text[end:end+1400].lstrip(" |:-")
@@ -75,9 +84,6 @@ def consensus_key(row):
 
 def enrich_file(path,session,max_urls):
     data=json.loads(path.read_text(encoding="utf-8")); search_part=str(data.get("search_part","")).strip()
-    # Preserve parser-native fitments for non-brake-pad families only. For brake
-    # pads we rebuild from the safe strategy below so a previous broad page can
-    # never survive into final output.
     if data.get("allowed_product_family")=="brake-pad":
         existing=[]
     else:
@@ -105,13 +111,10 @@ def enrich_file(path,session,max_urls):
 
     accepted=[]; method=""
     if exact_urls:
-        # Exact OEM page wins; do not union aftermarket supersets.
         method="Cars245 exact OEM application page"
         for url in exact_urls:
             accepted.extend(page_rows.get(url,[]))
     else:
-        # No direct OEM page discovered: require the same vehicle application on
-        # >=3 independent Cars245 product pages that all reference the OEM.
         method="Cars245 3-page consensus across OEM-referencing brake-pad pages"
         occurrences=defaultdict(set); representative={}
         for url,rows in page_rows.items():
