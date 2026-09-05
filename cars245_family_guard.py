@@ -67,6 +67,16 @@ PART_CATEGORY = {
     "4H0698451M": "Brake Parts",
     "4H0615601H": "Brake Parts",
     "4H0615601Q": "Brake Parts",
+    "4G0615301G": "Brake Parts",
+    "4G0615301": "Brake Parts",
+    "8W0615601E": "Brake Parts",
+    "8W0615601K": "Brake Parts",
+    "L80D615601": "Brake Parts",
+    "PAB698451": "Brake Parts",
+    "PAC698151": "Brake Parts",
+    "9P1819631": "Filters",
+    "982129620B": "Filters",
+    "0PC115466": "Filters",
 }
 
 SLUG_FAMILY_HINTS = {
