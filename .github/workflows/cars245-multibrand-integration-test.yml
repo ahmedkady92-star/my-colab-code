@@ -1,0 +1,74 @@
+name: Cars245 Multibrand Integration Test
+
+on:
+  push:
+    branches:
+      - cars245-multibrand-integration
+    paths:
+      - cars245_landrover.py
+      - .github/workflows/cars245-multibrand-integration-test.yml
+  workflow_dispatch:
+
+jobs:
+  regression-test:
+    runs-on: ubuntu-24.04
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+
+      - name: Install dependencies
+        run: pip install -r requirements.txt
+
+      - name: Run existing Audi parser regression
+        run: |
+          set -euo pipefail
+          mkdir -p output-audi
+          python cars245_strict.py "4M0 407 151 D" --max-products 30 --delay 0.2 --output-dir output-audi
+
+      - name: Validate Audi regression
+        run: |
+          python - <<'PY'
+          import json, glob
+          files = glob.glob('output-audi/*_strict.json')
+          assert len(files) == 1, files
+          r = json.load(open(files[0], encoding='utf-8'))
+          print('AUDI', r['search_part'], 'links=', r['product_links_found'], 'family=', r['allowed_product_family'], 'alts=', r['alternatives_found'], 'fitments=', r['fitment_rows_found'])
+          assert r['product_links_found'] > 0, r
+          PY
+
+      - name: Run Land Rover parser
+        run: |
+          set -euo pipefail
+          mkdir -p output-landrover
+          python cars245_landrover.py LR019618 --max-products 50 --delay 0.3 --output-dir output-landrover
+          python cars245_landrover.py LR016808 --max-products 50 --delay 0.3 --output-dir output-landrover
+
+      - name: Enrich Land Rover brake pad fitment
+        run: python cars245_fitment_enrich.py --input-dir output-landrover --max-urls 8
+
+      - name: Validate Land Rover regression
+        run: |
+          python - <<'PY'
+          import json, glob
+          files = sorted(glob.glob('output-landrover/*_strict.json'))
+          assert len(files) == 2, files
+          for f in files:
+              r = json.load(open(f, encoding='utf-8'))
+              print('LANDROVER', r['search_part'], 'links=', r['product_links_found'], 'family=', r['allowed_product_family'], 'alts=', r['alternatives_found'], 'fitments=', r['fitment_rows_found'])
+              assert r['product_links_found'] > 0, r
+              assert r['allowed_product_family'] == 'brake-pad', r
+              assert r['fitment_rows_found'] > 0, r
+          PY
+
+      - name: Upload integration report
+        uses: actions/upload-artifact@v4
+        with:
+          name: cars245-multibrand-integration-report
+          path: |
+            output-audi/
+            output-landrover/
