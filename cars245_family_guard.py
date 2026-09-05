@@ -16,6 +16,11 @@ CATEGORY_FAMILIES = {
     "Suspension/Steering": {"shock-absorber", "control-arm", "wheel-bearing"},
     "Filters": {"oil-filter", "air-filter", "cabin-filter", "fuel-filter"},
     "Sensors": {"sensor"},
+    "Wipers": {"wiper-blade"},
+    "CV Boot": {"cv-boot"},
+    "Stabilizer Link": {"stabilizer-link"},
+    "Cooling System": {"coolant-expansion-tank"},
+    "Valves": {"change-over-valve"},
 }
 
 PART_CATEGORY = {
@@ -77,6 +82,42 @@ PART_CATEGORY = {
     "9P1819631": "Filters",
     "982129620B": "Filters",
     "0PC115466": "Filters",
+
+    # Remaining 34 ready identifiers
+    "95B998001A": "Wipers",
+    "971955427A": "Wipers",
+    "8K0407151F": "Suspension/Chassis",
+    "8K0407151G": "Suspension/Chassis",
+    "8K0407152F": "Suspension/Chassis",
+    "8K0407152G": "Suspension/Chassis",
+    "8K0407283B": "CV Boot",
+    "8K0407285E": "CV Boot",
+    "99735193806": "Brake Parts",
+    "4M0199372D": "Engine Parts",
+    "4M0199372FG": "Engine Parts",
+    "4M0199372FM": "Engine Parts",
+    "4M0199372FE": "Engine Parts",
+    "4M0199372GL": "Engine Parts",
+    "4M0199372GM": "Engine Parts",
+    "4M0199372HA": "Engine Parts",
+    "9Y0399153": "Engine Parts",
+    "PAB407151": "Suspension/Chassis",
+    "4M0407151D": "Suspension/Chassis",
+    "4M0407151F": "Suspension/Chassis",
+    "4M0407151H": "Suspension/Chassis",
+    "4M0411317": "Stabilizer Link",
+    "4H0411317A": "Stabilizer Link",
+    "4H0411317B": "Stabilizer Link",
+    "4M0411317J": "Stabilizer Link",
+    "4M0411317L": "Stabilizer Link",
+    "4M0121403H": "Cooling System",
+    "4M0121403D": "Cooling System",
+    "4M0121403F": "Cooling System",
+    "9P1411317A": "Stabilizer Link",
+    "9P1411318A": "Stabilizer Link",
+    "7PP906270B": "Valves",
+    "9A210722500": "Filters",
+    "PAB19937210": "Engine Parts",
 }
 
 SLUG_FAMILY_HINTS = {
@@ -104,6 +145,19 @@ SLUG_FAMILY_HINTS = {
     "timing-belt": "timing-belt",
     "timing-chain": "timing-chain",
     "belt-tensioner": "belt-tensioner",
+    "wiper-blade": "wiper-blade",
+    "windscreen-wiper": "wiper-blade",
+    "wiper": "wiper-blade",
+    "bellow-drive-shaft": "cv-boot",
+    "cv-joint-bellow": "cv-boot",
+    "drive-shaft-bellow": "cv-boot",
+    "stabiliser-link": "stabilizer-link",
+    "stabilizer-link": "stabilizer-link",
+    "rod-strut-stabiliser": "stabilizer-link",
+    "coolant-expansion-tank": "coolant-expansion-tank",
+    "expansion-tank-coolant": "coolant-expansion-tank",
+    "change-over-valve": "change-over-valve",
+    "changeover-valve": "change-over-valve",
 }
 
 TYPE_FAMILY = {
@@ -129,6 +183,14 @@ TYPE_FAMILY = {
     "Timing Belt Set": "timing-belt",
     "Timing Chain": "timing-chain",
     "Belt Tensioner": "belt-tensioner",
+    "Wiper Blade": "wiper-blade",
+    "Bellow, drive shaft": "cv-boot",
+    "CV Joint Bellow": "cv-boot",
+    "Rod/Strut, stabiliser": "stabilizer-link",
+    "Stabilizer Link": "stabilizer-link",
+    "Expansion Tank, coolant": "coolant-expansion-tank",
+    "Coolant Expansion Tank": "coolant-expansion-tank",
+    "Change-Over Valve": "change-over-valve",
 }
 
 
