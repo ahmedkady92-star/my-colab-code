@@ -31,6 +31,9 @@ jobs:
           python cars245_landrover.py LR019618 --max-products 50 --delay 0.3 --output-dir output-landrover
           python cars245_landrover.py LR016808 --max-products 50 --delay 0.3 --output-dir output-landrover
 
+      - name: Enrich Land Rover brake pad fitment
+        run: python cars245_fitment_enrich.py --input-dir output-landrover --max-urls 8
+
       - name: Validate Land Rover output
         run: |
           python - <<'PY'
@@ -40,6 +43,8 @@ jobs:
           for f in files:
               r = json.load(open(f, encoding='utf-8'))
               print(r['search_part'], 'links=', r['product_links_found'], 'family=', r['allowed_product_family'], 'alts=', r['alternatives_found'], 'fitments=', r['fitment_rows_found'])
+              assert r['product_links_found'] > 0
+              assert r['allowed_product_family'] == 'brake-pad', r
           PY
 
       - name: Upload Land Rover report
