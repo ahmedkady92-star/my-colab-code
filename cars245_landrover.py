@@ -7,6 +7,7 @@ brake-pad URL recognition without changing the shared parser.
 """
 import cars245_strict
 
+# Isolated catalog override: shared Audi/VW behavior remains untouched.
 cars245_strict.SEARCH_PATH = "/en/catalog/car-landrover/?q={query}"
 
 _original_product_type_from_url = cars245_strict.product_type_from_url
