@@ -1,0 +1,96 @@
+name: Cars245 Bentley Volvo Test
+
+on:
+  push:
+    branches:
+      - cars245-bentley-volvo
+    paths:
+      - cars245_brands.py
+      - cars245_fitment_enrich.py
+      - .github/workflows/cars245-bentley-volvo-test.yml
+  workflow_dispatch:
+
+jobs:
+  bentley-volvo-regression:
+    runs-on: ubuntu-24.04
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+
+      - name: Install dependencies
+        run: pip install -r requirements.txt
+
+      - name: Confirm legacy parser default unchanged
+        run: |
+          python - <<'PY'
+          import cars245_strict
+          assert cars245_strict.SEARCH_PATH == '/en/catalog/car-audi/?q={query}', cars245_strict.SEARCH_PATH
+          print('legacy SEARCH_PATH unchanged')
+          PY
+
+      - name: Run Bentley and Volvo parsers
+        run: |
+          set -euo pipefail
+          mkdir -p output-new/bentley output-new/volvo
+          python cars245_multibrand.py bentley '3Y0 698 151' --max-products 20 --delay 0.2 --output-dir output-new/bentley
+          python cars245_multibrand.py volvo '31445622' --max-products 20 --delay 0.2 --output-dir output-new/volvo
+
+      - name: Enrich Bentley and Volvo fitment
+        run: |
+          python cars245_fitment_enrich.py --input-dir output-new/bentley --max-urls 8
+          python cars245_fitment_enrich.py --input-dir output-new/volvo --max-urls 8
+
+      - name: Validate Bentley and Volvo
+        run: |
+          python - <<'PY'
+          import glob, json
+          expectations = {'bentley':'BENTLEY','volvo':'VOLVO'}
+          for brand, expected_make in expectations.items():
+              files = glob.glob(f'output-new/{brand}/*_strict.json')
+              assert len(files) == 1, (brand, files)
+              r = json.load(open(files[0], encoding='utf-8'))
+              makes = {x.get('vehicle_make') for x in r.get('fitments', [])}
+              print(brand, 'links=', r['product_links_found'], 'family=', r['allowed_product_family'], 'alts=', r['alternatives_found'], 'fitments=', r['fitment_rows_found'], 'makes=', sorted(makes))
+              assert r['product_links_found'] > 0, (brand, r)
+              assert r['allowed_product_family'] == 'brake-pad', (brand, r['allowed_product_family'])
+              assert r['alternatives_found'] > 0, (brand, r)
+              assert r['fitment_rows_found'] > 0, (brand, r)
+              assert expected_make in makes, (brand, expected_make, sorted(makes))
+          PY
+
+      - name: Core VW regression
+        run: |
+          set -euo pipefail
+          mkdir -p output-reg/audi output-reg/volkswagen output-reg/porsche
+          python cars245_multibrand.py audi '8K0 698 151 F' --max-products 12 --delay 0.1 --output-dir output-reg/audi
+          python cars245_multibrand.py volkswagen '5Q0 698 151 F' --max-products 12 --delay 0.1 --output-dir output-reg/volkswagen
+          python cars245_multibrand.py porsche '997 351 938 06' --max-products 12 --delay 0.1 --output-dir output-reg/porsche
+          for d in output-reg/audi output-reg/volkswagen output-reg/porsche; do
+            python cars245_fitment_enrich.py --input-dir "$d" --max-urls 5
+          done
+
+      - name: Validate core VW regression
+        run: |
+          python - <<'PY'
+          import glob, json
+          for brand in ['audi','volkswagen','porsche']:
+              f = glob.glob(f'output-reg/{brand}/*_strict.json')[0]
+              r = json.load(open(f, encoding='utf-8'))
+              print(brand, r['product_links_found'], r['allowed_product_family'], r['fitment_rows_found'])
+              assert r['product_links_found'] > 0
+              assert r['allowed_product_family'] == 'brake-pad'
+              assert r['fitment_rows_found'] > 0
+          PY
+
+      - name: Upload report
+        uses: actions/upload-artifact@v4
+        with:
+          name: cars245-bentley-volvo-report
+          path: |
+            output-new/
+            output-reg/
