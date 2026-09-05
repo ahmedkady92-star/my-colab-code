@@ -1,0 +1,54 @@
+name: Cars245 BMW Safe Test
+
+on:
+  push:
+    branches:
+      - cars245-bmw-safe-test
+    paths:
+      - cars245_bmw.py
+      - .github/workflows/cars245-bmw-safe-test.yml
+  workflow_dispatch:
+
+jobs:
+  bmw-test:
+    runs-on: ubuntu-24.04
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+
+      - name: Install dependencies
+        run: pip install -r requirements.txt
+
+      - name: Run BMW strict parser
+        run: |
+          set -euo pipefail
+          mkdir -p output-bmw
+          python cars245_bmw.py 34116878876 --max-products 50 --delay 0.3 --output-dir output-bmw
+
+      - name: Enrich BMW brake pad fitment
+        run: python cars245_fitment_enrich.py --input-dir output-bmw --max-urls 8
+
+      - name: Validate BMW output
+        run: |
+          python - <<'PY'
+          import json, glob
+          files = sorted(glob.glob('output-bmw/*_strict.json'))
+          assert len(files) == 1, files
+          r = json.load(open(files[0], encoding='utf-8'))
+          print(r['search_part'], 'links=', r['product_links_found'], 'family=', r['allowed_product_family'], 'alts=', r['alternatives_found'], 'fitments=', r['fitment_rows_found'])
+          assert r['product_links_found'] > 0, r
+          assert r['allowed_product_family'] == 'brake-pad', r
+          assert r['alternatives_found'] > 0, r
+          assert r['fitment_rows_found'] > 0, r
+          PY
+
+      - name: Upload BMW report
+        uses: actions/upload-artifact@v4
+        with:
+          name: cars245-bmw-safe-test-report
+          path: output-bmw/
