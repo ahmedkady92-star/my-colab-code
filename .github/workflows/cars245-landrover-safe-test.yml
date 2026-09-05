@@ -1,0 +1,49 @@
+name: Cars245 Land Rover Safe Test
+
+on:
+  push:
+    branches:
+      - landrover-support-safe-test-2
+    paths:
+      - cars245_landrover.py
+      - .github/workflows/cars245-landrover-safe-test.yml
+  workflow_dispatch:
+
+jobs:
+  landrover-test:
+    runs-on: ubuntu-24.04
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+
+      - name: Install dependencies
+        run: pip install -r requirements.txt
+
+      - name: Run Land Rover strict parser
+        run: |
+          set -euo pipefail
+          mkdir -p output-landrover
+          python cars245_landrover.py LR019618 --max-products 50 --delay 0.3 --output-dir output-landrover
+          python cars245_landrover.py LR016808 --max-products 50 --delay 0.3 --output-dir output-landrover
+
+      - name: Validate Land Rover output
+        run: |
+          python - <<'PY'
+          import json, glob
+          files = sorted(glob.glob('output-landrover/*_strict.json'))
+          assert len(files) == 2, files
+          for f in files:
+              r = json.load(open(f, encoding='utf-8'))
+              print(r['search_part'], 'links=', r['product_links_found'], 'family=', r['allowed_product_family'], 'alts=', r['alternatives_found'], 'fitments=', r['fitment_rows_found'])
+          PY
+
+      - name: Upload Land Rover report
+        uses: actions/upload-artifact@v4
+        with:
+          name: cars245-landrover-safe-test-report
+          path: output-landrover/
