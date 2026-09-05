@@ -4,7 +4,8 @@ BRANDS = {
     "volkswagen": {"search_path": "/en/catalog/car-vw/?q={query}", "group": "vw"},
     "skoda": {"search_path": "/en/catalog/car-skoda/?q={query}", "group": "vw"},
     "seat": {"search_path": "/en/catalog/car-seat/?q={query}", "group": "vw"},
-    "cupra": {"search_path": "/en/catalog/car-seat/?q={query}", "group": "vw"},
+    # Cars245 does not expose CUPRA as a standalone vehicle catalog; use the shared VAG/Audi catalog fallback.
+    "cupra": {"search_path": "/en/catalog/car-audi/?q={query}", "group": "vw", "catalog_fallback": "vag"},
     "porsche": {"search_path": "/en/catalog/car-porsc/?q={query}", "group": "vw"},
     "landrover": {"search_path": "/en/catalog/car-landrover/?q={query}", "group": "jlr"},
     "bmw": {"search_path": "/en/catalog/car-bmw/?q={query}", "group": "bmw"},
