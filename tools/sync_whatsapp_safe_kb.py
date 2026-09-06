@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-import argparse, json, os, re
+import argparse, hashlib, json, os, re
 from pathlib import Path
 
 import google.auth
@@ -17,7 +17,6 @@ HEADERS = [
     "Engine", "Customer_Price", "Currency", "Stock_Status", "Availability", "Warranty",
     "Return_Policy", "Verified_Status", "Last_Checked_At", "AI_Eligible", "Source_Record_ID", "Notes",
 ]
-
 BLOCKED_TOKENS = [
     "supplier", "kano", "ksg", "cost", "profit", "margin", "github", "source_record",
     "supplier_cost", "target profit", "raw pre-discount", "internal calculated",
@@ -37,10 +36,14 @@ def clean_text(v):
     return str(v or "").strip()
 
 
+def safe_id(original):
+    digest = hashlib.sha256(clean_text(original).encode("utf-8")).hexdigest()[:12].upper()
+    return f"WAI-{digest}"
+
+
 def safe_notes(row):
     src = clean_text(row.get("Notes"))
     parts = []
-    # Preserve only customer-facing pricing fragments.
     for label in ("السعر قبل الخصم", "السعر بعد الخصم", "الخصم"):
         m = re.search(rf"{re.escape(label)}\s*:\s*([^|]+)", src, flags=re.I)
         if m:
@@ -50,7 +53,6 @@ def safe_notes(row):
         currency = clean_text(row.get("Currency")) or "EGP"
         parts.append(f"السعر المعتمد: {price} {currency}")
     parts.append(CUSTOMER_AVAILABILITY)
-
     status = clean_text(row.get("Verified_Status")).upper()
     eligible = clean_text(row.get("AI_Eligible")).upper()
     vehicle = clean_text(row.get("Vehicle_Model"))
@@ -68,19 +70,20 @@ def sanitize_row(headers, vals):
     row = dict(zip(headers, vals))
     out = {h: clean_text(row.get(h)) for h in HEADERS}
 
-    # Never expose internal supplier-linked IDs in the WhatsApp knowledge base.
-    out["Product_ID"] = out["AI_Feed_ID"] or out["Part_Number"] or out["OEM_Number"]
+    # Replace all supplier-linked internal identifiers with a stable opaque WhatsApp-safe ID.
+    sid = safe_id(out["AI_Feed_ID"] or out["Product_ID"] or out["Part_Number"] or out["OEM_Number"])
+    out["AI_Feed_ID"] = sid
+    out["Product_ID"] = sid
     out["Source_Record_ID"] = ""
     out["Availability"] = CUSTOMER_AVAILABILITY
     out["Stock_Status"] = "Availability Confirmation Required from ELKADY AUTO PARTS Team"
     out["Notes"] = safe_notes(row)
 
-    # Defense-in-depth: remove blocked internal words from customer-facing free text.
+    # Defense-in-depth sanitation of every customer-visible text field that may contain legacy notes.
     for field in ("Description", "Notes"):
         txt = out[field]
         for token in BLOCKED_TOKENS:
-            if token.lower() in txt.lower():
-                txt = re.sub(re.escape(token), "", txt, flags=re.I)
+            txt = re.sub(re.escape(token), "", txt, flags=re.I)
         out[field] = re.sub(r"\s{2,}", " ", txt).strip(" |")
     return [out[h] for h in HEADERS]
 
@@ -111,7 +114,6 @@ def main():
             continue
         safe_rows.append(sanitize_row(HEADERS, ordered))
 
-    # Leakage scan before any write.
     leakage = []
     for rnum, row in enumerate(safe_rows, start=2):
         joined = " | ".join(str(x) for x in row)
@@ -129,7 +131,6 @@ def main():
             {"range": f"'{TAB}'!A1:X{len(safe_rows)+1}", "values": [HEADERS] + safe_rows},
         ]}
         svc.spreadsheets().values().batchUpdate(spreadsheetId=TARGET_ID, body=body).execute()
-        # Clear stale rows if the safe sheet previously had more records.
         if target_existing_rows > len(safe_rows):
             svc.spreadsheets().values().clear(
                 spreadsheetId=TARGET_ID,
@@ -145,8 +146,7 @@ def main():
         "invalid_source_rows_skipped": invalid,
         "target_existing_rows": target_existing_rows,
         "leakage_detected": len(leakage),
-        "fields_exposed": HEADERS,
-        "internal_ids_removed": True,
+        "internal_ids_replaced": True,
         "source_record_ids_removed": True,
         "notes_sanitized": True,
     }
