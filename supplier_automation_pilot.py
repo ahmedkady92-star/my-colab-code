@@ -45,14 +45,12 @@ def main():
     strict = out / "cars245"
     strict.mkdir(exist_ok=True)
 
-    # 1) Cars245 search + family guard using current multibrand parser.
     subprocess.run([
         sys.executable, "cars245_multibrand.py", TEST_OFFER["catalog_brand"],
         TEST_OFFER["oem_number"], "--max-products", "20", "--delay", "0",
         "--output-dir", str(strict)
     ], check=True)
 
-    # 2) Safe fitment enrichment.
     subprocess.run([
         sys.executable, "cars245_fitment_enrich.py", "--input-dir", str(strict), "--max-urls", "8"
     ], check=True)
@@ -62,14 +60,12 @@ def main():
         raise SystemExit(f"Expected one strict report, got {len(reports)}")
     report = json.loads(reports[0].read_text(encoding="utf-8"))
 
-    # 3) Same customer-price math as the Google Sheet.
     cost = TEST_OFFER["supplier_cost"]
     profit = progressive_profit(cost)
     price_after_discount = cost + profit
     raw_before_discount = price_after_discount / (1 - DISCOUNT_RATE)
     rounded_before_discount = round_up(raw_before_discount, ROUNDING_STEP)
 
-    # 4) Dry-run acceptance gate: never auto-publish fitment without exact/consensus evidence.
     fit = report.get("fitment_enrichment", {})
     fitment_ok = bool(report.get("fitment_rows_found", 0)) and (
         fit.get("exact_oem_urls", 0) > 0 or fit.get("matched_search_part_urls", 0) >= 3
@@ -116,8 +112,7 @@ def main():
     (out / "pilot_result.json").write_text(json.dumps(payload, ensure_ascii=False, indent=2), encoding="utf-8")
     print(json.dumps(payload, ensure_ascii=False, indent=2))
 
-    # Assert expected pricing math from the live sheet rule snapshot.
-    assert rounded(price_after_discount, 2) == 3390.00, price_after_discount
+    assert round(price_after_discount, 2) == 3390.00, price_after_discount
     assert rounded_before_discount == 3600, rounded_before_discount
     if not family_ok:
         raise SystemExit("Pilot failed: product family is not brake-pad")
