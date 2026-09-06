@@ -26,7 +26,9 @@ def svc():
 
 
 def read_table(s, tab, end_col):
-    vals = s.spreadsheets().values().get(spreadsheetId=SPREADSHEET_ID, range=f"'{tab}'!A1:{end_col}5000").execute().get("values", [])
+    vals = s.spreadsheets().values().get(
+        spreadsheetId=SPREADSHEET_ID, range=f"'{tab}'!A1:{end_col}5000"
+    ).execute().get("values", [])
     if not vals:
         raise RuntimeError(f"Empty sheet {tab}")
     headers = vals[0]
@@ -45,30 +47,44 @@ def col_letter(n):
     return out
 
 
-def append_row(s, tab, headers, data, dry):
-    if dry:
+def append_rows(s, tab, headers, rows, dry):
+    if dry or not rows:
         return
     last = col_letter(len(headers))
-    row = [data.get(h, "") for h in headers]
+    values = [[data.get(h, "") for h in headers] for data in rows]
     s.spreadsheets().values().append(
         spreadsheetId=SPREADSHEET_ID,
-        range=f"'{tab}'!A:{last}", valueInputOption="RAW", insertDataOption="INSERT_ROWS",
-        body={"values": [row]},
+        range=f"'{tab}'!A:{last}",
+        valueInputOption="RAW",
+        insertDataOption="INSERT_ROWS",
+        body={"values": values},
     ).execute()
 
 
-def update_fields(s, tab, row_no, headers, data, dry):
-    if dry:
+def append_row(s, tab, headers, data, dry):
+    append_rows(s, tab, headers, [data], dry)
+
+
+def batch_update_fields(s, tab, headers, updates, dry):
+    """updates: list of (row_no, {field:value}). One Sheets write request total."""
+    if dry or not updates:
         return
-    for field, value in data.items():
-        if field not in headers:
-            continue
-        col = col_letter(headers.index(field) + 1)
-        s.spreadsheets().values().update(
+    data = []
+    for row_no, fields in updates:
+        for field, value in fields.items():
+            if field not in headers:
+                continue
+            col = col_letter(headers.index(field) + 1)
+            data.append({"range": f"'{tab}'!{col}{row_no}", "values": [[value]]})
+    if data:
+        s.spreadsheets().values().batchUpdate(
             spreadsheetId=SPREADSHEET_ID,
-            range=f"'{tab}'!{col}{row_no}", valueInputOption="RAW",
-            body={"values": [[value]]},
+            body={"valueInputOption": "RAW", "data": data},
         ).execute()
+
+
+def update_fields(s, tab, row_no, headers, data, dry):
+    batch_update_fields(s, tab, headers, [(row_no, data)], dry)
 
 
 def parse_fitment(row):
@@ -142,7 +158,7 @@ def main():
     desired_identifier_notes = (
         "Exact searched OEM or explicit Cars245 cross-reference/supersession evidence; safe fitment gate passed"
         if verified_mode else
-        "Supplier-provided OEM matched to same-family Cars245 catalog results; exact OEM/supersession not yet proven; AI locked"
+        "Supplier-provided OEM matched to same-family Cars245 page that mentions searched OEM; exact OEM/supersession not yet proven; AI locked"
     )
 
     if not existing:
@@ -200,32 +216,35 @@ def main():
         existing_by_key[key] = (rn, r)
 
     raw_fitments = cars.get("fitments", []) if verified_mode else cars.get("candidate_fitments", [])
+    pending_rows = []
+    promotion_updates = []
     created_fitments = 0
     promoted_fitments = 0
+
     for raw in raw_fitments:
         f = parse_fitment(raw)
         key = (product_id, norm(f["make"]), norm(f["model"]), norm(f["engine_code"]), str(f["year_from"]), str(f["year_to"]), norm(f["pr"]))
         source_url = str(raw.get("source_url", ""))
         if key in existing_by_key:
             rn, old = existing_by_key[key]
-            if verified_mode and "CANDIDATE" in str(old.get("Fitment_Status", "")).upper():
-                update_fields(s, "39_Vehicle_Fitment", rn, h39, {
+            if verified_mode and rn and "CANDIDATE" in str(old.get("Fitment_Status", "")).upper():
+                promotion_updates.append((rn, {
                     "Fitment_Status": "Compatible - conditional",
                     "Verified_Status": "Verified source; exact variant conditional",
                     "Last_Checked_At": today,
                     "Notes": f["notes"] + (f" | Source: {source_url}" if source_url else "") + " | Promoted from candidate after strong OEM evidence",
-                }, args.dry_run)
+                }))
                 promoted_fitments += 1
             continue
 
         fitment_status = "Compatible - conditional" if verified_mode else "Candidate - Review Required"
-        verified_status = "Verified source; exact variant conditional" if verified_mode else "Cars245 catalog mapping candidate; OEM/supersession not proven"
+        verified_status = "Verified source; exact variant conditional" if verified_mode else "Cars245 page mentions searched OEM; catalog mapping candidate; OEM/supersession not proven"
         vin_rule = (
             "Check VIN + PR/engine code before final confirmation when variant is conditional"
             if verified_mode else
             "MANDATORY REVIEW: confirm OEM/supersession and VIN/PR before customer fitment confirmation"
         )
-        append_row(s, "39_Vehicle_Fitment", h39, {
+        pending_rows.append({
             "Fitment_ID": stable_id("FIT-AUTO", *key),
             "Product_ID": product_id,
             "Vehicle_Make": f["make"],
@@ -247,9 +266,14 @@ def main():
             "Verified_Status": verified_status,
             "Last_Checked_At": today,
             "Notes": f["notes"] + (f" | Source: {source_url}" if source_url else ""),
-        }, args.dry_run)
+        })
         created_fitments += 1
         existing_by_key[key] = (0, {})
+
+    # One API write for all new fitments and one API write for all promotions.
+    # This avoids the Google Sheets 60 write-requests/minute/user quota.
+    append_rows(s, "39_Vehicle_Fitment", h39, pending_rows, args.dry_run)
+    batch_update_fields(s, "39_Vehicle_Fitment", h39, promotion_updates, args.dry_run)
 
     print(json.dumps({
         "status":"DRY_RUN" if args.dry_run else "SUCCESS",
@@ -260,6 +284,7 @@ def main():
         "fitments_created":created_fitments,
         "fitments_promoted":promoted_fitments,
         "fitments_input":len(raw_fitments),
+        "sheets_fitment_write_batches": int(bool(pending_rows)) + int(bool(promotion_updates)),
         "ai_eligible":verified_mode,
     }, ensure_ascii=False))
 
