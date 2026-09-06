@@ -12,7 +12,9 @@ CASES = [
     {"name":"front","supplier":"KANO","supplier_id":"SUP-000002","manufacturer_brand":"Lucas","supplier_part_number":"7L8 616 039 G","oem_number":"7L8 616 039 G","part_description":"مساعدين امامي / Front shock absorbers","supplier_cost":75000,"currency":"EGP"},
     {"name":"rear","supplier":"KANO","supplier_id":"SUP-000002","manufacturer_brand":"Lucas","supplier_part_number":"7L8 616 019 C","oem_number":"7L8 616 019 C","part_description":"مساعدين خلفي / Rear shock absorbers","supplier_cost":70000,"currency":"EGP"},
 ]
-BRANDS = ["audi","volkswagen","porsche","skoda","seat","cupra","bentley","landrover"]
+# VW/Porsche are plausible for the 7L8 prefix. Land Rover and Skoda are retained
+# specifically as regression cases because the previous automation chose them incorrectly.
+BRANDS = ["volkswagen","porsche","landrover","skoda"]
 
 
 def run_case(case):
@@ -60,6 +62,12 @@ def main():
                 assert a.get("family_match") is True
                 assert int(a.get("exact_oem_pages") or 0)>0
                 assert int(a.get("fitment_rows") or 0)>0
+        # The previously bad catalogs must never become AI-eligible unless they
+        # pass exact OEM + family + fitment evidence under the new gate.
+        for a in attempts:
+            if a.get("brand") in {"landrover","skoda"} and a.get("ai_eligible"):
+                assert a.get("validated_family")=="shock-absorber"
+                assert int(a.get("exact_oem_pages") or 0)>0
     print("SHOCK_GATE_REGRESSION_OK")
 
 if __name__=="__main__": main()
