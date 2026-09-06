@@ -1,0 +1,41 @@
+name: AI Feed Cars245 Backfill 20260906
+
+on:
+  push:
+    branches: [ai-feed-backfill-20260906]
+    paths:
+      - 'backfill/ai_feed_backfill_20260906.csv'
+      - 'backfill/run_ai_feed_backfill.py'
+      - '.github/workflows/ai-feed-backfill-20260906.yml'
+  workflow_dispatch:
+
+jobs:
+  backfill:
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        chunk: [0, 1, 2, 3, 4, 5]
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+      - name: Install dependencies
+        run: pip install -r requirements.txt
+      - name: Confirm legacy parser unchanged
+        run: |
+          python - <<'PY'
+          import cars245_strict
+          assert cars245_strict.SEARCH_PATH == '/en/catalog/car-audi/?q={query}'
+          print('legacy parser unchanged')
+          PY
+      - name: Run backfill chunk
+        run: python backfill/run_ai_feed_backfill.py --chunk ${{ matrix.chunk }} --chunks 6
+      - name: Upload raw backfill chunk
+        uses: actions/upload-artifact@v4
+        with:
+          name: ai-feed-backfill-chunk-${{ matrix.chunk }}
+          path: backfill-output/chunk-${{ matrix.chunk }}
+          if-no-files-found: error
+          retention-days: 30
