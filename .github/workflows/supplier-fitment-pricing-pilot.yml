@@ -1,0 +1,32 @@
+name: Supplier Fitment Pricing Pilot
+
+on:
+  push:
+    branches:
+      - supplier-fitment-pricing-pilot
+    paths:
+      - supplier_automation_pilot.py
+      - .github/workflows/supplier-fitment-pricing-pilot.yml
+
+jobs:
+  pilot:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+      - name: Install dependencies
+        run: pip install pandas requests beautifulsoup4
+      - name: Confirm main parser files are unchanged in pilot
+        run: |
+          test -f cars245_strict.py
+          test -f cars245_multibrand.py
+          test -f cars245_fitment_enrich.py
+      - name: Run end-to-end dry-run pilot
+        run: python supplier_automation_pilot.py
+      - name: Upload pilot report
+        uses: actions/upload-artifact@v4
+        with:
+          name: supplier-fitment-pricing-pilot-report
+          path: pilot_output/
