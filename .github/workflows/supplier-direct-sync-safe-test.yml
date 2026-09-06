@@ -1,0 +1,52 @@
+name: Supplier Direct Sheets Safe Test
+
+on:
+  push:
+    branches:
+      - wif-sheets-safe-test
+    paths:
+      - automation/wif_direct_sync_test_offer.json
+      - supplier_automation.py
+      - tools/sync_supplier_payload_to_sheets.py
+      - .github/workflows/supplier-direct-sync-safe-test.yml
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  id-token: write
+
+jobs:
+  direct-sync-test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Authenticate to Google Cloud via WIF
+        uses: google-github-actions/auth@v2
+        with:
+          workload_identity_provider: projects/127233897104/locations/global/workloadIdentityPools/elkady-github-actions/providers/github
+          service_account: elkady-crm-automation@elkadyauto-login.iam.gserviceaccount.com
+          create_credentials_file: true
+          export_environment_variables: true
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+
+      - name: Install dependencies
+        run: pip install pandas requests beautifulsoup4 google-api-python-client google-auth
+
+      - name: Build Cars245 and pricing payload
+        run: python supplier_automation.py --input automation/wif_direct_sync_test_offer.json --output-dir automation_output
+
+      - name: Direct sync to ELKADY CRM Google Sheet
+        env:
+          ELKADY_SPREADSHEET_ID: 1A-8YoZkVIdelh2x3i7DmeFCERLeR1XREyEpK3Wrk6B0
+        run: python tools/sync_supplier_payload_to_sheets.py --payload automation_output/import_payload.json
+
+      - name: Upload test payload
+        uses: actions/upload-artifact@v4
+        with:
+          name: supplier-direct-sync-safe-test-report
+          path: automation_output/
+          retention-days: 7
