@@ -2,6 +2,10 @@
 import argparse, hashlib, json, os, re, shutil, subprocess, sys
 from pathlib import Path
 
+ROOT = Path(__file__).resolve().parents[1]
+if str(ROOT) not in sys.path:
+    sys.path.insert(0, str(ROOT))
+
 import google.auth
 from googleapiclient.discovery import build
 from cars245_brands import BRANDS
