@@ -6,21 +6,123 @@ on:
       - main
     paths:
       - automation/offer_input.json
+  workflow_dispatch:
+    inputs:
+      supplier:
+        description: Supplier name
+        required: true
+        default: KANO
+      supplier_id:
+        description: Supplier ID
+        required: true
+        default: SUP-000002
+      manufacturer_brand:
+        description: Part manufacturer brand (ICER, TRW, etc.)
+        required: true
+      supplier_part_number:
+        description: Supplier part number
+        required: true
+      oem_number:
+        description: OEM / vehicle manufacturer part number
+        required: true
+      part_description:
+        description: Part description
+        required: true
+      supplier_cost:
+        description: Supplier cost
+        required: true
+      currency:
+        description: Currency
+        required: true
+        default: EGP
+      catalog_brand:
+        description: Cars245 catalog brand
+        required: true
+        type: choice
+        options:
+          - audi
+          - vw
+          - skoda
+          - seat
+          - cupra
+          - porsche
+          - bentley
+          - landrover
+          - jaguar
+          - bmw
+          - mercedes
+          - volvo
+
+permissions:
+  contents: read
+  id-token: write
 
 jobs:
-  build-import-payload:
+  supplier-to-crm:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
+
+      - name: Authenticate to Google Cloud via Workload Identity Federation
+        uses: google-github-actions/auth@v2
+        with:
+          workload_identity_provider: projects/127233897104/locations/global/workloadIdentityPools/elkady-github-actions/providers/github
+          service_account: elkady-crm-automation@elkadyauto-login.iam.gserviceaccount.com
+          create_credentials_file: true
+          export_environment_variables: true
+
       - uses: actions/setup-python@v5
         with:
           python-version: '3.11'
+
       - name: Install dependencies
-        run: pip install pandas requests beautifulsoup4
-      - name: Run supplier automation
+        run: pip install pandas requests beautifulsoup4 google-api-python-client google-auth
+
+      - name: Build input from manual workflow fields
+        if: github.event_name == 'workflow_dispatch'
+        env:
+          SUPPLIER: ${{ inputs.supplier }}
+          SUPPLIER_ID: ${{ inputs.supplier_id }}
+          MANUFACTURER_BRAND: ${{ inputs.manufacturer_brand }}
+          SUPPLIER_PART_NUMBER: ${{ inputs.supplier_part_number }}
+          OEM_NUMBER: ${{ inputs.oem_number }}
+          PART_DESCRIPTION: ${{ inputs.part_description }}
+          SUPPLIER_COST: ${{ inputs.supplier_cost }}
+          CURRENCY: ${{ inputs.currency }}
+          CATALOG_BRAND: ${{ inputs.catalog_brand }}
+        run: |
+          mkdir -p automation
+          python - <<'PY'
+          import json, os
+          data = {
+              "supplier": os.environ["SUPPLIER"],
+              "supplier_id": os.environ["SUPPLIER_ID"],
+              "manufacturer_brand": os.environ["MANUFACTURER_BRAND"],
+              "supplier_part_number": os.environ["SUPPLIER_PART_NUMBER"],
+              "oem_number": os.environ["OEM_NUMBER"],
+              "part_description": os.environ["PART_DESCRIPTION"],
+              "supplier_cost": float(os.environ["SUPPLIER_COST"]),
+              "currency": os.environ["CURRENCY"],
+              "catalog_brand": os.environ["CATALOG_BRAND"],
+          }
+          with open("automation/offer_input.json", "w", encoding="utf-8") as f:
+              json.dump(data, f, ensure_ascii=False, indent=2)
+          PY
+
+      - name: Validate input exists
+        run: test -f automation/offer_input.json
+
+      - name: Run Cars245 and pricing automation
         run: python supplier_automation.py --input automation/offer_input.json --output-dir automation_output
-      - name: Upload import payload
+
+      - name: Sync directly to ELKADY AUTO CRM Google Sheet
+        env:
+          ELKADY_SPREADSHEET_ID: 1A-8YoZkVIdelh2x3i7DmeFCERLeR1XREyEpK3Wrk6B0
+        run: python tools/sync_supplier_payload_to_sheets.py --payload automation_output/import_payload.json
+
+      - name: Upload audit/debug payload
         uses: actions/upload-artifact@v4
         with:
-          name: supplier-automation-import-payload
+          name: supplier-automation-report
           path: automation_output/
+          retention-days: 7
