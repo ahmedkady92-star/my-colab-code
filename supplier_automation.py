@@ -14,6 +14,7 @@ TIERS = [
 DISCOUNT_RATE = .05
 ROUNDING_STEP = 50
 SUPPORTED_SUPPLIERS = {"KANO"}
+AUTO_VERIFIED_FAMILIES = {"brake-pad"}
 
 def progressive_profit(cost):
     total = 0.0
@@ -38,7 +39,7 @@ def require(obj, key):
 
 def main():
     p = argparse.ArgumentParser()
-    p.add_argument("--input", default="automation/offer_input.json")
+    p.add_argument("--input", required=True)
     p.add_argument("--output-dir", default="automation_output")
     args = p.parse_args()
 
@@ -75,11 +76,21 @@ def main():
 
     fit = report.get("fitment_enrichment", {})
     family = report.get("allowed_product_family", "")
-    family_ok = bool(family)
-    fitment_ok = bool(report.get("fitment_rows_found", 0)) and (
+    family_supported = family in AUTO_VERIFIED_FAMILIES
+    safe_fitment_evidence = bool(report.get("fitment_rows_found", 0)) and (
         fit.get("exact_oem_urls", 0) > 0 or fit.get("matched_search_part_urls", 0) >= 3
     )
-    ai_eligible = bool(family_ok and fitment_ok)
+    fitment_ok = bool(family_supported and safe_fitment_evidence)
+    ai_eligible = fitment_ok
+
+    if not family:
+        review_reason = "Cars245 product family not resolved"
+    elif not family_supported:
+        review_reason = f"Family {family} has no auto-verification enrichment policy yet"
+    elif not safe_fitment_evidence:
+        review_reason = "Exact OEM / 3-page consensus fitment evidence not satisfied"
+    else:
+        review_reason = ""
 
     payload = {
         "mode": "READY_FOR_SHEET_IMPORT",
@@ -105,10 +116,12 @@ def main():
             "fitment_enrichment": fit,
         },
         "automation_gate": {
-            "family_ok": family_ok,
+            "family_supported": family_supported,
+            "safe_fitment_evidence": safe_fitment_evidence,
             "fitment_ok": fitment_ok,
             "ai_eligible": ai_eligible,
             "verified_status": "Verified - VIN/PR Required" if ai_eligible else "Review Required",
+            "review_reason": review_reason,
             "availability_text": "السعر معتمد، والتوافر يحتاج تأكيدًا من فريق ELKADY AUTO PARTS",
         },
         "sheet_plan": [
