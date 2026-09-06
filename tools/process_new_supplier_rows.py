@@ -107,11 +107,20 @@ def score(payload):
     cars = payload.get("cars245", {})
     fit = cars.get("fitment_enrichment", {})
     gate = payload.get("automation_gate", {})
+    safe_fitments = int(cars.get("fitment_rows_found", 0) or 0)
+    candidate_fitments = int(cars.get("candidate_fitment_rows_found", 0) or 0)
+    candidate_pages = len((cars.get("strict_validation", {}) or {}).get("candidate_pages", []) or [])
+    # Order of trust: AI-safe exact/cross-reference > exact OEM page > reviewed catalog candidate
+    # > broad search matches. Previously candidate evidence was ignored, so a weaker unrelated
+    # catalog could beat a useful candidate simply because it returned more generic links.
     return (
         1000000 * int(bool(gate.get("ai_eligible")))
-        + 100000 * int(fit.get("exact_oem_urls", 0) > 0)
-        + 10000 * min(int(fit.get("matched_search_part_urls", 0)), 9)
-        + 10 * int(cars.get("fitment_rows_found", 0))
+        + 200000 * int(fit.get("exact_oem_urls", 0) > 0)
+        + 100000 * int(bool(gate.get("catalog_mapped_candidate")) and candidate_fitments > 0)
+        + 10000 * min(candidate_pages, 9)
+        + 1000 * min(safe_fitments, 99)
+        + 100 * min(candidate_fitments, 99)
+        + 10 * min(int(fit.get("matched_search_part_urls", 0)), 9)
         + int(cars.get("product_links_found", 0))
     )
 
@@ -212,10 +221,19 @@ def main():
             try:
                 payload = run_supplier_automation(offer, out)
                 sc = score(payload)
-                attempts.append({"brand":key,"score":sc,"ai_eligible":payload.get("automation_gate",{}).get("ai_eligible"),"fitments":payload.get("cars245",{}).get("fitment_rows_found",0)})
+                gate = payload.get("automation_gate", {})
+                cars = payload.get("cars245", {})
+                attempts.append({
+                    "brand":key,
+                    "score":sc,
+                    "ai_eligible":gate.get("ai_eligible"),
+                    "catalog_candidate":gate.get("catalog_mapped_candidate"),
+                    "safe_fitments":cars.get("fitment_rows_found",0),
+                    "candidate_fitments":cars.get("candidate_fitment_rows_found",0),
+                })
                 if best is None or sc > best[0]:
                     best = (sc, key, out / "import_payload.json", payload)
-                if payload.get("automation_gate", {}).get("ai_eligible"):
+                if gate.get("ai_eligible"):
                     break
             except Exception as e:
                 attempts.append({"brand":key,"error":str(e)[:200]})
