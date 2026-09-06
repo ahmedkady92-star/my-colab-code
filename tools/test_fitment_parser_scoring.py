@@ -1,6 +1,15 @@
 #!/usr/bin/env python3
-from tools.upsert_verified_fitment import parse_fitment, clean_fitment_text
-from tools.process_new_supplier_rows import score
+import sys
+from pathlib import Path
+
+ROOT = Path(__file__).resolve().parents[1]
+TOOLS = ROOT / "tools"
+for p in (ROOT, TOOLS):
+    if str(p) not in sys.path:
+        sys.path.insert(0, str(p))
+
+from upsert_verified_fitment import parse_fitment
+from process_new_supplier_rows import score
 
 porsche = {
     "vehicle_make": "PORSCHE",
