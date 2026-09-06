@@ -2,6 +2,8 @@
 import argparse, json, math, subprocess, sys
 from pathlib import Path
 
+from tools.cars245_result_gate import validate_report
+
 TIERS = [
     (0, 500, .85),
     (500, 1000, .65),
@@ -15,7 +17,9 @@ DISCOUNT_RATE = .05
 ROUNDING_STEP = 50
 # Kept only as a compatibility hook for the sheet scanner; pricing itself is global.
 SUPPORTED_SUPPLIERS = set()
-AUTO_VERIFIED_FAMILIES = {"brake-pad"}
+# Families allowed to pass automatically only after the strict OEM/family gate below.
+AUTO_VERIFIED_FAMILIES = {"brake-pad", "shock-absorber"}
+
 
 def progressive_profit(cost):
     total = 0.0
@@ -26,17 +30,21 @@ def progressive_profit(cost):
         total += max(0.0, upper - lo) * rate
     return total
 
+
 def round_up(value, step):
     return math.ceil(value / step) * step
 
+
 def normalize(value):
     return "".join(ch for ch in str(value).upper() if ch.isalnum())
+
 
 def require(obj, key):
     value = obj.get(key)
     if value in (None, ""):
         raise SystemExit(f"Missing required input: {key}")
     return value
+
 
 def main():
     p = argparse.ArgumentParser()
@@ -48,6 +56,7 @@ def main():
     supplier = str(require(offer, "supplier")).upper().strip()
     cost = float(require(offer, "supplier_cost"))
     oem = str(require(offer, "oem_number")).strip()
+    description = str(offer.get("part_description", "") or "").strip()
     catalog_brand = str(require(offer, "catalog_brand")).strip().lower()
     currency = str(offer.get("currency", "EGP") or "EGP").upper().strip()
     if currency != "EGP":
@@ -71,26 +80,54 @@ def main():
         raise SystemExit(f"Expected one Cars245 report, got {len(reports)}")
     report = json.loads(reports[0].read_text(encoding="utf-8"))
 
+    # Strict post-parse validation. Search-result volume is never enough by itself:
+    # the exact OEM must be evidenced on a product page and its family must match
+    # the supplier description (e.g. shock absorber must not become an A/C part).
+    validation = validate_report(report, oem, description)
+    family = validation.get("validated_family", "")
+    expected_family = validation.get("expected_family", "")
+    exact_oem_pages = int(validation.get("exact_oem_pages", 0))
+    family_match = bool(validation.get("family_match"))
+    safe_fitments = list(validation.get("safe_fitments", []))
+    exact_urls = set(validation.get("exact_oem_urls", []))
+
+    # Only alternatives whose own Cars245 page carries exact searched-OEM evidence
+    # are allowed downstream. This blocks unrelated cross-reference contamination.
+    safe_alternatives = []
+    seen_alt = set()
+    for alt in report.get("alternatives", []):
+        url = str(alt.get("url", "")).strip()
+        if not url or url not in exact_urls:
+            continue
+        key = (str(alt.get("brand", "")).upper(), normalize(alt.get("part_number", "")))
+        if key in seen_alt:
+            continue
+        seen_alt.add(key)
+        safe_alternatives.append(alt)
+
     profit = progressive_profit(cost)
     price_after_discount = cost + profit
     raw_before_discount = price_after_discount / (1 - DISCOUNT_RATE)
     rounded_before_discount = round_up(raw_before_discount, ROUNDING_STEP)
 
-    fit = report.get("fitment_enrichment", {})
-    family = report.get("allowed_product_family", "")
     family_supported = family in AUTO_VERIFIED_FAMILIES
-    safe_fitment_evidence = bool(report.get("fitment_rows_found", 0)) and (
-        fit.get("exact_oem_urls", 0) > 0 or fit.get("matched_search_part_urls", 0) >= 3
-    )
-    fitment_ok = bool(family_supported and safe_fitment_evidence)
+    exact_oem_evidence = exact_oem_pages > 0
+    safe_fitment_evidence = len(safe_fitments) > 0
+    fitment_ok = bool(expected_family and family_match and family_supported and exact_oem_evidence and safe_fitment_evidence)
     ai_eligible = fitment_ok
 
-    if not family:
-        review_reason = "Cars245 product family not resolved"
+    if not expected_family:
+        review_reason = "Part description family not resolved; manual review required"
+    elif not exact_oem_evidence:
+        review_reason = "Exact searched OEM not evidenced on a Cars245 product page"
+    elif not family:
+        review_reason = "Cars245 exact-OEM product family not resolved"
+    elif not family_match:
+        review_reason = f"Cars245 family mismatch: expected {expected_family}, got {family}"
     elif not family_supported:
-        review_reason = f"Family {family} has no auto-verification enrichment policy yet"
+        review_reason = f"Family {family} has no auto-verification policy yet"
     elif not safe_fitment_evidence:
-        review_reason = "Exact OEM / 3-page consensus fitment evidence not satisfied"
+        review_reason = "Exact-OEM page found but no fitment rows from that exact page"
     else:
         review_reason = ""
 
@@ -112,15 +149,24 @@ def main():
         "cars245": {
             "product_links_found": report.get("product_links_found", 0),
             "allowed_product_family": family,
-            "alternatives_found": report.get("alternatives_found", 0),
-            "oem_refs": report.get("oem_refs", []),
-            "fitment_rows_found": report.get("fitment_rows_found", 0),
-            "fitments": report.get("fitments", []),
-            "alternatives": report.get("alternatives", []),
-            "fitment_enrichment": fit,
+            "raw_dominant_product_family": report.get("allowed_product_family", ""),
+            "alternatives_found": len(safe_alternatives),
+            # Do not propagate broad scraped OEM lists. The exact searched OEM is the
+            # only identifier trusted automatically; extra aliases stay manual-review.
+            "oem_refs": [oem],
+            "fitment_rows_found": len(safe_fitments),
+            "fitments": safe_fitments,
+            "alternatives": safe_alternatives,
+            "fitment_enrichment": report.get("fitment_enrichment", {}),
+            "strict_validation": validation,
         },
         "automation_gate": {
+            "expected_family": expected_family,
+            "validated_family": family,
+            "family_match": family_match,
             "family_supported": family_supported,
+            "exact_oem_evidence": exact_oem_evidence,
+            "exact_oem_pages": exact_oem_pages,
             "safe_fitment_evidence": safe_fitment_evidence,
             "fitment_ok": fitment_ok,
             "ai_eligible": ai_eligible,
@@ -140,6 +186,7 @@ def main():
     }
     (out / "import_payload.json").write_text(json.dumps(payload, ensure_ascii=False, indent=2), encoding="utf-8")
     print(json.dumps(payload, ensure_ascii=False, indent=2))
+
 
 if __name__ == "__main__":
     main()
