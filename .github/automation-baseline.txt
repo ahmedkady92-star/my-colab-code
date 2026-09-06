@@ -1,0 +1,4 @@
+36_Supplier_Offers baseline row: 1229
+Rows 1-1229 are historical and excluded from automatic polling.
+Automatic polling starts with row 1230 and later.
+Activated: 2026-09-06
