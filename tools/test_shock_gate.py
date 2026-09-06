@@ -2,6 +2,10 @@
 import json, shutil, sys
 from pathlib import Path
 
+ROOT = Path(__file__).resolve().parents[1]
+if str(ROOT) not in sys.path:
+    sys.path.insert(0, str(ROOT))
+
 import supplier_automation
 
 CASES = [
@@ -48,8 +52,6 @@ def main():
     result={case["oem_number"]:run_case(case) for case in CASES}
     Path("shock_gate_test_output/summary.json").write_text(json.dumps(result, ensure_ascii=False, indent=2), encoding="utf-8")
     print(json.dumps(result, ensure_ascii=False, indent=2))
-    # Regression guarantees: no catalog may be AI-eligible unless the family is
-    # shock-absorber and exact OEM evidence exists. This is the contamination fix.
     for attempts in result.values():
         for a in attempts:
             if a.get("ai_eligible"):
