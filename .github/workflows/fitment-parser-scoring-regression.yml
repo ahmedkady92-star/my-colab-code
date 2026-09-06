@@ -1,0 +1,26 @@
+name: Fitment Parser Scoring Regression
+
+on:
+  push:
+    branches:
+      - fix-fitment-parser-candidate-scoring
+    paths:
+      - tools/upsert_verified_fitment.py
+      - tools/process_new_supplier_rows.py
+      - tools/test_fitment_parser_scoring.py
+      - .github/workflows/fitment-parser-scoring-regression.yml
+
+permissions:
+  contents: read
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+      - run: pip install google-api-python-client google-auth
+      - run: python tools/test_fitment_parser_scoring.py
