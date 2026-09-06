@@ -43,12 +43,14 @@ def safe_id(original):
 
 def safe_notes(row):
     src = clean_text(row.get("Notes"))
+    segments = [x.strip() for x in src.split("|") if x.strip()]
     parts = []
     for label in ("السعر قبل الخصم", "السعر بعد الخصم", "الخصم"):
-        m = re.search(rf"{re.escape(label)}\s*:\s*([^|]+)", src, flags=re.I)
-        if m:
-            parts.append(f"{label}: {m.group(1).strip()}")
-    if not any(x.startswith("السعر بعد الخصم") for x in parts) and clean_text(row.get("Customer_Price")):
+        prefix = label + ":"
+        seg = next((x for x in segments if x.startswith(prefix)), "")
+        if seg:
+            parts.append(seg)
+    if not any(x.startswith("السعر بعد الخصم:") for x in parts) and clean_text(row.get("Customer_Price")):
         price = clean_text(row.get("Customer_Price"))
         currency = clean_text(row.get("Currency")) or "EGP"
         parts.append(f"السعر المعتمد: {price} {currency}")
@@ -69,8 +71,6 @@ def sanitize_row(headers, vals):
     vals = vals + [""] * (len(headers) - len(vals))
     row = dict(zip(headers, vals))
     out = {h: clean_text(row.get(h)) for h in HEADERS}
-
-    # Replace all supplier-linked internal identifiers with a stable opaque WhatsApp-safe ID.
     sid = safe_id(out["AI_Feed_ID"] or out["Product_ID"] or out["Part_Number"] or out["OEM_Number"])
     out["AI_Feed_ID"] = sid
     out["Product_ID"] = sid
@@ -78,8 +78,6 @@ def sanitize_row(headers, vals):
     out["Availability"] = CUSTOMER_AVAILABILITY
     out["Stock_Status"] = "Availability Confirmation Required from ELKADY AUTO PARTS Team"
     out["Notes"] = safe_notes(row)
-
-    # Defense-in-depth sanitation of every customer-visible text field that may contain legacy notes.
     for field in ("Description", "Notes"):
         txt = out[field]
         for token in BLOCKED_TOKENS:
