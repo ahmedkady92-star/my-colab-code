@@ -1,0 +1,31 @@
+name: Supplier Trigger Fixture Test
+
+on:
+  push:
+    branches:
+      - wif-sheets-live-test
+    paths:
+      - automation/trigger_fixture.json
+      - .github/workflows/supplier-trigger-fixture.yml
+
+permissions:
+  contents: read
+
+jobs:
+  fixture:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+      - name: Install dependencies
+        run: pip install pandas requests beautifulsoup4
+      - name: Generate payload only
+        run: python supplier_automation.py --input automation/trigger_fixture.json --output-dir trigger_fixture_output
+      - name: Upload fixture payload
+        uses: actions/upload-artifact@v4
+        with:
+          name: supplier-trigger-fixture-payload
+          path: trigger_fixture_output/
+          retention-days: 7
