@@ -130,6 +130,11 @@ jobs:
           ELKADY_SPREADSHEET_ID: 1A-8YoZkVIdelh2x3i7DmeFCERLeR1XREyEpK3Wrk6B0
         run: python tools/relink_supplier_master_product.py --payload automation_output/import_payload.json
 
+      - name: Sync vehicle fitment summary into AI product feed
+        env:
+          ELKADY_SPREADSHEET_ID: 1A-8YoZkVIdelh2x3i7DmeFCERLeR1XREyEpK3Wrk6B0
+        run: python tools/sync_fitment_summary_to_ai_feed.py --payload automation_output/import_payload.json
+
       - name: Upload audit/debug payload
         uses: actions/upload-artifact@v4
         with:
