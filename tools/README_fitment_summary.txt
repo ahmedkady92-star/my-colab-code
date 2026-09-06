@@ -1,0 +1,1 @@
+AI fitment summary sync reads 39_Vehicle_Fitment and updates the matching 41_AI_Product_Feed row with vehicle makes, model/year summaries, overall year range, engine-code preview, and a review/VIN note. Candidate fitments remain Review Required and do not unlock AI eligibility.
