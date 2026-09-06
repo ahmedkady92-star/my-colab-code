@@ -13,6 +13,8 @@ TIERS = [
 ]
 DISCOUNT_RATE = .05
 ROUNDING_STEP = 50
+# Kept only as a compatibility hook for the sheet scanner; pricing itself is global.
+SUPPORTED_SUPPLIERS = set()
 AUTO_VERIFIED_FAMILIES = {"brake-pad"}
 
 def progressive_profit(cost):
