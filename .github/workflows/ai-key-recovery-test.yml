@@ -1,0 +1,40 @@
+name: AI Key Recovery Test
+
+on:
+  push:
+    branches:
+      - ai-complete-backfill
+    paths:
+      - tools/resolve_ai_product_keys.py
+      - .github/workflows/ai-key-recovery-test.yml
+
+permissions:
+  contents: read
+  id-token: write
+
+jobs:
+  dry-run:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+      - name: Authenticate to Google Cloud via Workload Identity Federation
+        uses: google-github-actions/auth@v2
+        with:
+          workload_identity_provider: projects/127233897104/locations/global/workloadIdentityPools/elkady-github-actions/providers/github
+          service_account: elkady-crm-automation@elkadyauto-login.iam.gserviceaccount.com
+          create_credentials_file: true
+          export_environment_variables: true
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+      - run: pip install -r requirements.txt
+      - name: Dry-run exact key recovery
+        env:
+          ELKADY_SPREADSHEET_ID: 1A-8YoZkVIdelh2x3i7DmeFCERLeR1XREyEpK3Wrk6B0
+        run: python tools/resolve_ai_product_keys.py
+      - uses: actions/upload-artifact@v4
+        with:
+          name: ai-key-recovery-test-report
+          path: automation_output/ai_key_recovery_report.json
+          retention-days: 7
