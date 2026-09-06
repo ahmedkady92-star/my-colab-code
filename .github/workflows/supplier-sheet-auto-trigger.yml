@@ -1,0 +1,63 @@
+name: Supplier Sheet Auto Trigger
+
+on:
+  schedule:
+    - cron: '*/5 * * * *'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  id-token: write
+
+concurrency:
+  group: supplier-sheet-auto-trigger
+  cancel-in-progress: false
+
+jobs:
+  process-new-supplier-rows:
+    runs-on: ubuntu-latest
+    timeout-minutes: 55
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Authenticate to Google Cloud via Workload Identity Federation
+        uses: google-github-actions/auth@v2
+        with:
+          workload_identity_provider: projects/127233897104/locations/global/workloadIdentityPools/elkady-github-actions/providers/github
+          service_account: elkady-crm-automation@elkadyauto-login.iam.gserviceaccount.com
+          create_credentials_file: true
+          export_environment_variables: true
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+
+      - name: Install dependencies
+        run: pip install pandas requests beautifulsoup4 google-api-python-client google-auth
+
+      - name: Process new supplier rows only
+        env:
+          ELKADY_SPREADSHEET_ID: 1A-8YoZkVIdelh2x3i7DmeFCERLeR1XREyEpK3Wrk6B0
+        run: python tools/process_new_supplier_rows.py --baseline-row 1229 --max-candidates 2
+
+      - name: Relink processed rows to verified master Product_ID
+        env:
+          ELKADY_SPREADSHEET_ID: 1A-8YoZkVIdelh2x3i7DmeFCERLeR1XREyEpK3Wrk6B0
+        shell: bash
+        run: |
+          if [ -d supplier_sheet_trigger_output ]; then
+            while IFS= read -r -d '' payload; do
+              python tools/relink_supplier_master_product.py --payload "$payload"
+            done < <(find supplier_sheet_trigger_output -name import_payload.json -print0)
+          fi
+
+      - name: Upload automation audit/debug report
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: supplier-sheet-auto-trigger-${{ github.run_id }}
+          path: |
+            supplier_sheet_trigger_summary.json
+            supplier_sheet_trigger_output/
+          if-no-files-found: ignore
+          retention-days: 7
