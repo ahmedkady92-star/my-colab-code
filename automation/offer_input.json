@@ -2,10 +2,10 @@
   "supplier": "KANO",
   "supplier_id": "SUP-000002",
   "manufacturer_brand": "Lucas",
-  "supplier_part_number": "7L8 616 019 C",
-  "oem_number": "7L8 616 019 C",
-  "part_description": "مساعدين خلفي / Rear shock absorbers",
-  "supplier_cost": 70000,
+  "supplier_part_number": "7L8 616 039 G",
+  "oem_number": "7L8 616 039 G",
+  "part_description": "مساعدين امامي / Front shock absorbers",
+  "supplier_cost": 75000,
   "currency": "EGP",
-  "catalog_brand": "volkswagen"
+  "catalog_brand": "audi"
 }
