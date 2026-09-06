@@ -87,20 +87,54 @@ def update_fields(s, tab, row_no, headers, data, dry):
     batch_update_fields(s, tab, headers, [(row_no, data)], dry)
 
 
+def clean_fitment_text(value):
+    text = re.sub(r"\s+", " ", str(value or "")).strip()
+    # Cars245 occasionally appends footer/manufacturer/site chrome to the final fitment row.
+    # Strip those blocks before writing to CRM so Notes stays useful and bounded.
+    stop_markers = (
+        " Additional info Manufacturer information",
+        " Manufacturer information ✖",
+        " Our customers also viewed:",
+        " ask question about the product",
+        " Cars245 About Us",
+        " Copyright ©",
+    )
+    low = text.lower()
+    cut = len(text)
+    for marker in stop_markers:
+        pos = low.find(marker.lower())
+        if pos >= 0:
+            cut = min(cut, pos)
+    text = text[:cut].strip(" |")
+    return text[:900]
+
+
 def parse_fitment(row):
-    text = str(row.get("fitment_text", "")).strip()
+    text = clean_fitment_text(row.get("fitment_text", ""))
     make = str(row.get("vehicle_make", "")).strip().upper()
     base, _, notes = text.partition(" | Important notes:")
+    base = base.strip()
     rest = base
     if make and rest.upper().startswith(make + " "):
         rest = rest[len(make):].strip()
-    pat = re.compile(rf"^(?P<prefix>.+?)\s+(?P<engine_code>[A-Z0-9-]{{2,10}})\s+(?P<fuel>{FUEL})\s+(?P<engine>\d{{1,2}}(?:[.,]\d+)?)\s+(?P<hp>\d{{2,4}})hp\s+(?P<kw>\d{{2,4}})kw\s+(?P<yf>\d{{4}})-(?P<yt>\d{{4}}|now|current)$", re.I)
+
+    # Supports normal VAG codes (BAR/CASA) and Porsche-style codes such as
+    # M 48.00, M 05.9D and M02.2Y without swallowing the model name.
+    engine_code = r"(?:[A-Z]{1,3}\s+)?[A-Z0-9][A-Z0-9.\-]{1,11}"
+    pat = re.compile(
+        rf"^(?P<prefix>.+?)\s+(?P<engine_code>{engine_code})\s+(?P<fuel>{FUEL})\s+"
+        rf"(?P<engine>\d{{1,2}}(?:[.,]\d+)?)\s+(?P<hp>\d{{2,4}})hp\s+"
+        rf"(?P<kw>\d{{2,4}})kw\s+(?P<yf>\d{{4}})-(?P<yt>\d{{4}}|now|current)$",
+        re.I,
+    )
     m = pat.match(rest)
     if not m:
+        fallback_model = rest[:140]
         return {
-            "make": make, "model": base, "generation": "", "engine_code": "", "fuel": "", "engine": "",
+            "make": make, "model": fallback_model, "generation": "", "engine_code": "", "fuel": "", "engine": "",
             "year_from": row.get("year_from", ""), "year_to": row.get("year_to", ""), "pr": "", "notes": text,
         }
+
     prefix = m.group("prefix").strip()
     generation = ""
     model = prefix
@@ -109,13 +143,14 @@ def parse_fitment(row):
         candidate = (pm.group(1) or "") + pm.group(2)
         generation = candidate.strip()
         model = prefix[:pm.start()].strip()
+
     pr = ""
     prm = re.search(r"(?:For\s+)?PR\s+number\s*:\s*([^;|]+)", notes, re.I)
     if prm:
         pr = prm.group(1).strip()
     return {
         "make": make, "model": model, "generation": generation,
-        "engine_code": m.group("engine_code").upper(), "fuel": m.group("fuel"),
+        "engine_code": re.sub(r"\s+", " ", m.group("engine_code").upper()).strip(), "fuel": m.group("fuel"),
         "engine": m.group("engine").replace(",", "."), "year_from": m.group("yf"),
         "year_to": m.group("yt").lower().replace("current", "now"), "pr": pr, "notes": text,
     }
@@ -270,8 +305,6 @@ def main():
         created_fitments += 1
         existing_by_key[key] = (0, {})
 
-    # One API write for all new fitments and one API write for all promotions.
-    # This avoids the Google Sheets 60 write-requests/minute/user quota.
     append_rows(s, "39_Vehicle_Fitment", h39, pending_rows, args.dry_run)
     batch_update_fields(s, "39_Vehicle_Fitment", h39, promotion_updates, args.dry_run)
 
