@@ -1,0 +1,32 @@
+feed_ids,brand_route,query_part,expected_family,original_part,oem_number,product_brand,part_name,vehicle_make,vehicle_model
+AI-KANO-0163,porsche,8K0 407 285 E,,8K0 407 285 E,8K0 407 285 E; 5M0 498 203; 2Q0 498 203 C; 2Q0 498 203 J; 2Q0 498 203 N,Gautoparts,كاوتش كوبلن خارجي,Porsche,Macan
+AI-KANO-0172,porsche,997 351 938 09,brake-pad,13.0460-4703.2,997 351 938 09; 997 351 938 10; 997 351 938 04; 997 351 938 11; 997 351 938 06; 981 351 939 04,Metelli,تيل فرامل أمامي,Porsche,
+AI-KANO-0173|AI-KANO-0191,porsche,991 609 165 00,,24.8190-0842.2,991 609 165 00,Porsche Genuine,حساس تآكل تيل أمامي,Porsche,
+AI-KANO-0174|AI-KANO-0175,porsche,982 698 451 B,brake-pad,982 698 451 B,982 698 451 B; 987 352 939 01; 987 352 939 03,Metelli,تيل فرامل خلفي,Porsche,
+AI-KANO-0177,porsche,987 352 401 01,brake-disc,460.1570.20,987 352 401 01,Porsche Genuine,طنابير فرامل خلفية,Porsche,
+AI-KANO-0181,porsche,9Y0 399 153 B,transmission-mount,9Y0 399 153 B,9Y0 399 153 B; 9Y0 399 153,AP-T,قاعدة فتيس,Porsche,Cayenne
+AI-KANO-0184,porsche,4M0 121 403 H,,4M0 121 403 H,4M0 121 403 H; 4M0 121 403 D; 4M0 121 403 F,AP-T,قربة مياه تبريد,Porsche,
+AI-KANO-0185,porsche,991 572 371 00,cabin-filter,M111016,991 572 371 00,Denkerman,فلتر تكييف خارجي,Porsche,
+AI-KANO-0186,porsche,9P1 819 631,cabin-filter,9P1 819 631,9P1 819 631,Denkerman,فلتر تكييف داخلي,Porsche,
+AI-KANO-0187,porsche,982 129 620 A,air-filter,A142216,982 129 620 A; 982 129 620 B,Denkerman,فلتر هواء,Porsche,
+AI-KANO-0188,porsche,0PC 115 466,oil-filter,A211054,0PC 115 466; 9A2 107 225 00,Denkerman,فلتر زيت,Porsche,
+AI-KANO-0189,porsche,9P1 411 317 A,,9P1 411 317 A,9P1 411 317 A,AP-T,تيش ميزان أمامي شمال,Porsche,
+AI-KANO-0190,porsche,9P1 411 318 A,,9P1 411 318 A,9P1 411 318 A,AP-T,تيش ميزان أمامي يمين,Porsche,
+AI-KANO-0192,porsche,7PP 906 270 B,,7PP 906 270 B,7PP 906 270 B,Pierburg,صمام تحويل,Porsche,
+AI-KANO-0264,audi,06A121132R,,133AC 06A121132R,,KAYAN,كوعة مياه وش سيلندر,,A5/فانتازيا G5/جيتا/B6/B7 CC/توران A3
+AI-KANO-CHAT-0001,porsche,958 121 111 11,,958 121 111 11,958 121 111 11,,طلمبة مياه كهربائية,,
+AI-KANO-CHAT-0002,porsche,7PP 199 331 A,engine-mount,7PP 199 331 A,7PP 199 331 A,Lemforder,شداد محرك,,
+AI-KANO-CHAT-0003,audi,06E 115 562 A,oil-filter,06E 115 562 A,06E 115 562 A,,فلتر زيت,,
+AI-KANO-CHAT-0004,porsche,94810727102,,94810727102,94810727102,,مبرد,,
+AI-KANO-CHAT-0005,audi,5N0 199 262 M,engine-mount,5N0 199 262 M,5N0 199 262 M,,قاعده موتور,,
+AI-KANO-CHAT-0006,audi,7L8616039H,shock-absorber,7L8616039H,7L8616039H,Lucas,مساعد امامي,,
+AI-KANO-CHAT-0007,audi,8T0 807 283 A,,8T0 807 283 A,8T0 807 283 A,,حامل رفرف,,
+AI-KANO-CHAT-0008,audi,8W0 698 451 AP,brake-pad,8W0 698 451 AP,8W0 698 451 AP,ICER,تيل خلفي,,
+AI-KANO-MAN-0001,porsche,95B 615 301 AB,brake-disc,95B 615 301 AB,95B 615 301 AB,,طنابير أمامية,Porsche,Macan
+AI-KANO-MAN-0003,audi,3Q0 698 451 J1,brake-pad,3Q0 698 451 J1,3Q0 698 451 J1,Original,تيل خلفي أصلي,,
+AI-KANO-MAN-0004,porsche,9A7 198 405 00,oil-filter,9A7 198 405 00,9A7 198 405 00,Copy,فلتر زيت,Porsche,GTS 2021
+AI-KANO-MAN-0005|AI-KANO-MAN-0006|AI-KANO-MAN-0007,porsche,PAB 133 843 A,air-filter,PAB 133 843 A,PAB 133 843 A,Mopro,فلتر هواء,Porsche,GTS 2021
+AI-KANO-MAN-0008|AI-KANO-MAN-0009,porsche,PAB 819 439 00,cabin-filter,PAB 819 439 00,PAB 819 439 00,Mopro,فلتر تكييف,Porsche,GTS 2021
+AI-KANO-MAN-0010,porsche,9A7 905 601 00,,9A7 905 601 00,9A7 905 601 00,Original,طقم بوجيهات – 6 بوجيه,Porsche,GTS 2021
+AI-KANO-MAN-0011,landrover,LR174644,,LR174644,LR174644,,قطعة Land Rover – الوصف يحتاج تأكيد,Land Rover,
+AI-4F5827552,audi,4F5 827 552,,4F5 827 552,4F5 827 552,AUDI / VAG,Tailgate / Trunk Gas Strut,AUDI,A6 C6; S6 C6
