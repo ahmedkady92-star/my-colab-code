@@ -1,0 +1,54 @@
+name: WhatsApp Safe Knowledge Sync
+
+on:
+  schedule:
+    - cron: '*/10 * * * *'
+  workflow_dispatch:
+  push:
+    branches:
+      - main
+      - whatsapp-safe-sync
+    paths:
+      - tools/sync_whatsapp_safe_kb.py
+      - .github/workflows/whatsapp-safe-sync.yml
+
+permissions:
+  contents: read
+  id-token: write
+
+concurrency:
+  group: whatsapp-safe-knowledge-sync
+  cancel-in-progress: false
+
+jobs:
+  sync:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+      - name: Authenticate to Google Cloud via Workload Identity Federation
+        uses: google-github-actions/auth@v2
+        with:
+          workload_identity_provider: projects/127233897104/locations/global/workloadIdentityPools/elkady-github-actions/providers/github
+          service_account: elkady-crm-automation@elkadyauto-login.iam.gserviceaccount.com
+          create_credentials_file: true
+          export_environment_variables: true
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+      - run: pip install -r requirements.txt
+      - name: Safety dry run
+        env:
+          ELKADY_SOURCE_SPREADSHEET_ID: 1A-8YoZkVIdelh2x3i7DmeFCERLeR1XREyEpK3Wrk6B0
+          ELKADY_SAFE_SPREADSHEET_ID: 1d3J25P1L6oBOMCb6O3_xdRXie-FV-qvRbWEBv53jgYs
+        run: python tools/sync_whatsapp_safe_kb.py --report automation_output/whatsapp_safe_sync_dry_run.json
+      - name: Sync customer-safe AI feed
+        env:
+          ELKADY_SOURCE_SPREADSHEET_ID: 1A-8YoZkVIdelh2x3i7DmeFCERLeR1XREyEpK3Wrk6B0
+          ELKADY_SAFE_SPREADSHEET_ID: 1d3J25P1L6oBOMCb6O3_xdRXie-FV-qvRbWEBv53jgYs
+        run: python tools/sync_whatsapp_safe_kb.py --apply --report automation_output/whatsapp_safe_sync_apply.json
+      - uses: actions/upload-artifact@v4
+        with:
+          name: whatsapp-safe-sync-report
+          path: automation_output/whatsapp_safe_sync_*.json
+          retention-days: 7
