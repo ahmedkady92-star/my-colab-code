@@ -1,0 +1,40 @@
+name: WIF Google Sheets Write Test
+
+on:
+  push:
+    branches:
+      - wif-sheets-safe-test
+    paths:
+      - .github/workflows/wif-sheets-write-test.yml
+      - tools/wif_sheets_write_audit_test.py
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  id-token: write
+
+jobs:
+  write-audit:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Authenticate to Google Cloud via WIF
+        uses: google-github-actions/auth@v2
+        with:
+          workload_identity_provider: projects/127233897104/locations/global/workloadIdentityPools/elkady-github-actions/providers/github
+          service_account: elkady-crm-automation@elkadyauto-login.iam.gserviceaccount.com
+          create_credentials_file: true
+          export_environment_variables: true
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+
+      - name: Install Google API client
+        run: pip install google-api-python-client google-auth
+
+      - name: Append and verify one audit row only
+        env:
+          ELKADY_SPREADSHEET_ID: 1A-8YoZkVIdelh2x3i7DmeFCERLeR1XREyEpK3Wrk6B0
+        run: python tools/wif_sheets_write_audit_test.py
