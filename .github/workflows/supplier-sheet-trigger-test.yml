@@ -7,6 +7,7 @@ on:
     paths:
       - tools/process_new_supplier_rows.py
       - tools/upsert_verified_fitment.py
+      - tools/relink_supplier_master_product.py
       - .github/workflows/supplier-sheet-trigger-test.yml
 
 permissions:
@@ -30,7 +31,7 @@ jobs:
           python-version: '3.11'
       - name: Install dependencies
         run: pip install pandas requests beautifulsoup4 google-api-python-client google-auth
-      - name: Scan only after baseline
+      - name: Scan only after safe baseline
         env:
           ELKADY_SPREADSHEET_ID: 1A-8YoZkVIdelh2x3i7DmeFCERLeR1XREyEpK3Wrk6B0
-        run: python tools/process_new_supplier_rows.py --baseline-row 1003 --scan-only
+        run: python tools/process_new_supplier_rows.py --baseline-row 1229 --scan-only
