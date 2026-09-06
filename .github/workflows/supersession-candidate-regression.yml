@@ -6,6 +6,7 @@ on:
       - improve-cars245-supersession-candidates
     paths:
       - supplier_automation.py
+      - cars245_fitment_enrich.py
       - tools/cars245_result_gate.py
       - tools/upsert_verified_fitment.py
       - tools/test_supersession_candidate_gate.py
