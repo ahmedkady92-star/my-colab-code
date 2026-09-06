@@ -1,15 +1,10 @@
 #!/usr/bin/env python3
-"""Enrich Cars245 strict JSON with brake-pad fitment safely.
+"""Enrich Cars245 strict JSON with vehicle compatibility.
 
-Priority order:
-1) If Cars245 exposes an exact OEM product page whose URL contains the searched
-   part number, use ONLY that page's vehicle applications.
-2) Otherwise, use a multi-page consensus across Cars245 brake-pad alternatives
-   that explicitly reference the searched OEM. A vehicle application must appear
-   on at least 3 distinct product pages before it is accepted.
-
-This prevents broad aftermarket products (which can fit extra cars) from
-polluting the OEM fitment stored in the CRM.
+Brake pads keep the previous strict OEM-reference/3-page-consensus rule.
+Other product families may collect fitment rows from same-family Cars245 item
+pages. Those rows are only candidates unless the downstream OEM/supersession
+gate proves strong evidence for the searched OEM.
 """
 from __future__ import annotations
 import argparse, json, re
@@ -36,10 +31,7 @@ def normalize_make(make):
 
 def is_brake_pad_url(url):
     u=url.lower()
-    return any(x in u for x in (
-        "brake-pad-set-disc-brake","brake-pads-for-disk-brake","brake-pads-with",
-        "brk-lining","disk-brake-pad","disc-brake-pad","ts-brake-pad","brake-pad"
-    ))
+    return any(x in u for x in ("brake-pad-set-disc-brake","brake-pads-for-disk-brake","brake-pads-with","brk-lining","disk-brake-pad","disc-brake-pad","ts-brake-pad","brake-pad"))
 
 def page_references_search_part(html,search_part):
     target=norm(search_part)
@@ -78,53 +70,50 @@ def extract_text_fitments(html,url):
     return rows
 
 def consensus_key(row):
-    """Identity independent of page-specific Important notes."""
     base=str(row.get("fitment_text","")).split(" | Important notes:",1)[0]
     return (str(row.get("vehicle_make","")).upper(), norm(base))
 
 def enrich_file(path,session,max_urls):
     data=json.loads(path.read_text(encoding="utf-8")); search_part=str(data.get("search_part","")).strip()
-    if data.get("allowed_product_family")=="brake-pad":
-        existing=[]
-    else:
-        existing=list(data.get("fitments",[]))
+    family=str(data.get("allowed_product_family","") or "")
+    existing=[] if family=="brake-pad" else list(data.get("fitments",[]))
     seen={(x.get("vehicle_make",""),x.get("fitment_text","").upper()) for x in existing}
 
     candidate_urls=[]
     for item in data.get("alternatives",[]):
         url=str(item.get("url","")).strip()
-        if url and is_brake_pad_url(url) and url not in candidate_urls: candidate_urls.append(url)
+        if not url or url in candidate_urls: continue
+        if family=="brake-pad" and not is_brake_pad_url(url): continue
+        candidate_urls.append(url)
 
-    checked=matched=0
-    page_rows={}
-    exact_urls=[]
-    for url in candidate_urls:
-        if matched>=max_urls: break
+    checked=matched=0; page_rows={}; exact_urls=[]
+    for url in candidate_urls[:max_urls]:
         r=session.get(url,timeout=30); r.raise_for_status(); checked+=1
-        if not page_references_search_part(r.text,search_part):
+        references=page_references_search_part(r.text,search_part)
+        if family=="brake-pad" and not references:
             print(f"FITMENT_SKIP {url}: searched_part_not_referenced"); continue
         matched+=1
-        rows=extract_text_fitments(r.text,url)
-        page_rows[url]=rows
+        rows=extract_text_fitments(r.text,url); page_rows[url]=rows
         if is_exact_oem_url(url,search_part): exact_urls.append(url)
-        print(f"FITMENT_URL {url}: exact_oem={is_exact_oem_url(url,search_part)} extracted={len(rows)}")
+        print(f"FITMENT_URL {url}: family={family} references_search={references} exact_oem={is_exact_oem_url(url,search_part)} extracted={len(rows)}")
 
     accepted=[]; method=""
-    if exact_urls:
-        method="Cars245 exact OEM application page"
-        for url in exact_urls:
-            accepted.extend(page_rows.get(url,[]))
+    if family=="brake-pad":
+        if exact_urls:
+            method="Cars245 exact OEM application page"
+            for url in exact_urls: accepted.extend(page_rows.get(url,[]))
+        else:
+            method="Cars245 3-page consensus across OEM-referencing brake-pad pages"
+            occurrences=defaultdict(set); representative={}
+            for url,rows in page_rows.items():
+                for row in rows:
+                    k=consensus_key(row); occurrences[k].add(url); representative.setdefault(k,row)
+            for k,urls in occurrences.items():
+                if len(urls)>=3:
+                    row=dict(representative[k]); row["source_url"]=" | ".join(sorted(urls)[:3]); accepted.append(row)
     else:
-        method="Cars245 3-page consensus across OEM-referencing brake-pad pages"
-        occurrences=defaultdict(set); representative={}
-        for url,rows in page_rows.items():
-            for row in rows:
-                k=consensus_key(row); occurrences[k].add(url); representative.setdefault(k,row)
-        for k,urls in occurrences.items():
-            if len(urls)>=3:
-                row=dict(representative[k])
-                row["source_url"]=" | ".join(sorted(urls)[:3])
-                accepted.append(row)
+        method="Cars245 same-family vehicle compatibility candidates; downstream OEM gate decides verified vs candidate"
+        for url in candidate_urls[:max_urls]: accepted.extend(page_rows.get(url,[]))
 
     added=0
     for row in accepted:
@@ -132,9 +121,8 @@ def enrich_file(path,session,max_urls):
         if key in seen: continue
         seen.add(key); existing.append(row); added+=1
 
-    if matched and data.get("allowed_product_family") in ("",None): data["allowed_product_family"]="brake-pad"
     data["fitments"]=existing; data["fitment_rows_found"]=len(existing)
-    data["fitment_enrichment"]={"method":method,"candidate_urls_checked":checked,"matched_search_part_urls":matched,"exact_oem_urls":len(exact_urls),"rows_added":added}
+    data["fitment_enrichment"]={"method":method,"candidate_urls_checked":checked,"matched_search_part_urls":matched,"exact_oem_urls":len(exact_urls),"rows_added":added,"product_family":family}
     path.write_text(json.dumps(data,ensure_ascii=False,indent=2),encoding="utf-8")
     return checked,matched,len(exact_urls),added
 
