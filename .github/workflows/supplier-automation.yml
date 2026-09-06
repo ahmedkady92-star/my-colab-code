@@ -4,11 +4,8 @@ on:
   push:
     branches:
       - main
-      - supplier-fitment-pricing-pilot
     paths:
       - automation/offer_input.json
-      - supplier_automation.py
-      - .github/workflows/supplier-automation.yml
 
 jobs:
   build-import-payload:
