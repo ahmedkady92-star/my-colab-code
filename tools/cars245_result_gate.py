@@ -150,15 +150,21 @@ def validate_report(report: dict, searched_oem: str, description: str, max_urls:
         try:
             r = session.get(url, timeout=30)
             r.raise_for_status()
+            soup = BeautifulSoup(r.text, "html.parser")
+            page_mentions_target = bool(target and target in norm(" ".join(soup.stripped_strings)))
             ok, evidence = oem_evidence(r.text, url, searched_oem)
             page = {
                 "url": url,
                 "family": fam,
-                "evidence": evidence or "same_family_catalog_result",
+                "evidence": evidence or "same_family_page_mentions_searched_oem",
                 "brand": item.get("brand", ""),
                 "part_number": item.get("part_number", ""),
             }
-            candidate_pages.append(page)
+            # Candidate pages must at least mention the searched OEM somewhere on
+            # the page. This prevents unrelated same-family item pages from
+            # contributing fitments merely because they appeared in broad search results.
+            if page_mentions_target:
+                candidate_pages.append(page)
             if ok:
                 strong_pages.append(page)
         except Exception as exc:
