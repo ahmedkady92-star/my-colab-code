@@ -5,7 +5,8 @@ on:
     branches:
       - supplier-fitment-pricing-pilot
     paths:
-      - supplier_automation_pilot.py
+      - supplier_automation.py
+      - automation/offer_input.example.json
       - .github/workflows/supplier-fitment-pricing-pilot.yml
 
 jobs:
@@ -18,13 +19,27 @@ jobs:
           python-version: '3.11'
       - name: Install dependencies
         run: pip install pandas requests beautifulsoup4
-      - name: Confirm main parser files are unchanged in pilot
+      - name: Confirm legacy parser files are present
         run: |
           test -f cars245_strict.py
           test -f cars245_multibrand.py
           test -f cars245_fitment_enrich.py
-      - name: Run end-to-end dry-run pilot
-        run: python supplier_automation_pilot.py
+      - name: Run hardened production pipeline against example
+        run: python supplier_automation.py --input automation/offer_input.example.json --output-dir pilot_output
+      - name: Validate expected pilot result
+        run: |
+          python - <<'PY'
+          import json
+          p=json.load(open('pilot_output/import_payload.json',encoding='utf-8'))
+          assert p['pricing']['price_after_discount'] == 3390.0
+          assert p['pricing']['rounded_price_before_discount'] == 3600
+          assert p['cars245']['allowed_product_family'] == 'brake-pad'
+          assert p['cars245']['fitment_rows_found'] > 0
+          assert p['cars245']['fitment_enrichment']['matched_search_part_urls'] >= 3
+          assert p['automation_gate']['ai_eligible'] is True
+          assert p['automation_gate']['verified_status'] == 'Verified - VIN/PR Required'
+          print('PRODUCTION_PIPELINE_PILOT_OK')
+          PY
       - name: Upload pilot report
         uses: actions/upload-artifact@v4
         with:
