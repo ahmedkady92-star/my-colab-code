@@ -1,6 +1,10 @@
 #!/usr/bin/env python3
-import argparse, json, os, re
+import argparse, json, os, re, sys
 from pathlib import Path
+
+ROOT = Path(__file__).resolve().parents[1]
+if str(ROOT) not in sys.path:
+    sys.path.insert(0, str(ROOT))
 
 from tools.upsert_verified_fitment import svc, read_table, batch_update_fields, norm
 
@@ -95,7 +99,6 @@ def main():
         if not target:
             unresolved.append({"row": rn, "ai_id": ai_id, "product_id": row.get("Product_ID", ""), "source_record_id": row.get("Source_Record_ID", "")})
             continue
-        # Exact source relation only. Fill both keys when both are blank; never replace an existing value.
         changes = {}
         if not str(row.get("Part_Number", "")).strip():
             changes["Part_Number"] = target
