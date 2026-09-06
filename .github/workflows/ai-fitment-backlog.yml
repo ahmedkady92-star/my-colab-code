@@ -1,0 +1,51 @@
+name: AI Fitment Backlog
+
+on:
+  schedule:
+    - cron: '*/10 * * * *'
+  workflow_dispatch:
+  push:
+    branches:
+      - main
+    paths:
+      - tools/enrich_ai_fitment_backlog.py
+      - .github/workflows/ai-fitment-backlog.yml
+
+permissions:
+  contents: read
+  id-token: write
+
+concurrency:
+  group: ai-fitment-backlog
+  cancel-in-progress: false
+
+jobs:
+  enrich:
+    runs-on: ubuntu-latest
+    timeout-minutes: 55
+    steps:
+      - uses: actions/checkout@v4
+      - name: Authenticate to Google Cloud via Workload Identity Federation
+        uses: google-github-actions/auth@v2
+        with:
+          workload_identity_provider: projects/127233897104/locations/global/workloadIdentityPools/elkady-github-actions/providers/github
+          service_account: elkady-crm-automation@elkadyauto-login.iam.gserviceaccount.com
+          create_credentials_file: true
+          export_environment_variables: true
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+      - run: pip install -r requirements.txt
+      - name: Enrich up to five missing fitment products
+        env:
+          ELKADY_SPREADSHEET_ID: 1A-8YoZkVIdelh2x3i7DmeFCERLeR1XREyEpK3Wrk6B0
+        run: python tools/enrich_ai_fitment_backlog.py --max-items 5 --max-brands 5
+      - name: Propagate fitment summaries to all matching AI price/brand rows
+        env:
+          ELKADY_SPREADSHEET_ID: 1A-8YoZkVIdelh2x3i7DmeFCERLeR1XREyEpK3Wrk6B0
+        run: python tools/backfill_fitment_summary_to_ai_feed.py --apply --report automation_output/ai_fitment_summary_refresh.json
+      - uses: actions/upload-artifact@v4
+        with:
+          name: ai-fitment-backlog-report
+          path: automation_output/
+          retention-days: 7
