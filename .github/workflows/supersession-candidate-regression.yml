@@ -1,0 +1,38 @@
+name: Supersession Candidate Regression
+
+on:
+  push:
+    branches:
+      - improve-cars245-supersession-candidates
+    paths:
+      - supplier_automation.py
+      - tools/cars245_result_gate.py
+      - tools/upsert_verified_fitment.py
+      - tools/test_supersession_candidate_gate.py
+      - .github/workflows/supersession-candidate-regression.yml
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+      - name: Install dependencies
+        run: pip install pandas requests beautifulsoup4
+      - name: Run Cars245 candidate regression
+        run: python tools/test_supersession_candidate_gate.py
+      - name: Upload candidate regression report
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: supersession-candidate-regression-report
+          path: candidate_gate_test_output/
+          if-no-files-found: ignore
+          retention-days: 7
