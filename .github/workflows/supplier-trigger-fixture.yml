@@ -6,23 +6,36 @@ on:
       - wif-sheets-live-test
     paths:
       - automation/trigger_fixture.json
+      - tools/upsert_verified_fitment.py
       - .github/workflows/supplier-trigger-fixture.yml
 
 permissions:
   contents: read
+  id-token: write
 
 jobs:
   fixture:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
+      - name: Authenticate to Google Cloud via Workload Identity Federation
+        uses: google-github-actions/auth@v2
+        with:
+          workload_identity_provider: projects/127233897104/locations/global/workloadIdentityPools/elkady-github-actions/providers/github
+          service_account: elkady-crm-automation@elkadyauto-login.iam.gserviceaccount.com
+          create_credentials_file: true
+          export_environment_variables: true
       - uses: actions/setup-python@v5
         with:
           python-version: '3.11'
       - name: Install dependencies
-        run: pip install pandas requests beautifulsoup4
+        run: pip install pandas requests beautifulsoup4 google-api-python-client google-auth
       - name: Generate payload only
         run: python supplier_automation.py --input automation/trigger_fixture.json --output-dir trigger_fixture_output
+      - name: Dry-run safe 38/39 upsert against live sheet
+        env:
+          ELKADY_SPREADSHEET_ID: 1A-8YoZkVIdelh2x3i7DmeFCERLeR1XREyEpK3Wrk6B0
+        run: python tools/upsert_verified_fitment.py --payload trigger_fixture_output/import_payload.json --dry-run
       - name: Upload fixture payload
         uses: actions/upload-artifact@v4
         with:
