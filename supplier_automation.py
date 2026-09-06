@@ -13,7 +13,6 @@ TIERS = [
 ]
 DISCOUNT_RATE = .05
 ROUNDING_STEP = 50
-SUPPORTED_SUPPLIERS = {"KANO"}
 AUTO_VERIFIED_FAMILIES = {"brake-pad"}
 
 def progressive_profit(cost):
@@ -45,11 +44,12 @@ def main():
 
     offer = json.loads(Path(args.input).read_text(encoding="utf-8"))
     supplier = str(require(offer, "supplier")).upper().strip()
-    if supplier not in SUPPORTED_SUPPLIERS:
-        raise SystemExit(f"Supplier pricing rules not configured: {supplier}")
     cost = float(require(offer, "supplier_cost"))
     oem = str(require(offer, "oem_number")).strip()
     catalog_brand = str(require(offer, "catalog_brand")).strip().lower()
+    currency = str(offer.get("currency", "EGP") or "EGP").upper().strip()
+    if currency != "EGP":
+        raise SystemExit(f"Automatic customer pricing currently requires EGP supplier cost: {currency}")
 
     out = Path(args.output_dir)
     out.mkdir(parents=True, exist_ok=True)
@@ -103,7 +103,9 @@ def main():
             "raw_price_before_discount": round(raw_before_discount, 2),
             "rounded_price_before_discount": rounded_before_discount,
             "discount_rate": DISCOUNT_RATE,
-            "currency": offer.get("currency", "EGP"),
+            "currency": currency,
+            "pricing_rule": "ELKADY progressive marginal pricing",
+            "supplier": supplier,
         },
         "cars245": {
             "product_links_found": report.get("product_links_found", 0),
@@ -129,6 +131,7 @@ def main():
             "37_Supplier_Price_History append",
             "38_Product_Identifiers upsert exact/safe IDs",
             "39_Vehicle_Fitment upsert only verified conditional fitment",
+            "13_Pricing upsert",
             "41_AI_Product_Feed upsert customer price and AI gate",
             "43_Sync_Audit append"
         ]
