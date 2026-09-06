@@ -1,0 +1,26 @@
+name: Supplier Automation
+
+on:
+  push:
+    branches:
+      - main
+    paths:
+      - automation/offer_input.json
+
+jobs:
+  build-import-payload:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+      - name: Install dependencies
+        run: pip install pandas requests beautifulsoup4
+      - name: Run supplier automation
+        run: python supplier_automation.py --input automation/offer_input.json --output-dir automation_output
+      - name: Upload import payload
+        uses: actions/upload-artifact@v4
+        with:
+          name: supplier-automation-import-payload
+          path: automation_output/
