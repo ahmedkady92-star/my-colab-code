@@ -1,0 +1,211 @@
+#!/usr/bin/env python3
+import argparse, hashlib, json, os, re
+from datetime import datetime, timezone
+from pathlib import Path
+
+import google.auth
+from googleapiclient.discovery import build
+
+SPREADSHEET_ID = os.environ.get("ELKADY_SPREADSHEET_ID", "1A-8YoZkVIdelh2x3i7DmeFCERLeR1XREyEpK3Wrk6B0")
+SCOPES = ["https://www.googleapis.com/auth/spreadsheets"]
+FUEL = r"Petrol/Compressed Natural Gas \(CNG\)|Petrol/Ethanol|Petrol/Electric|Diesel/Electric|Petrol|Diesel|CNG|Electric"
+
+
+def norm(v):
+    return re.sub(r"[^A-Z0-9]", "", str(v or "").upper())
+
+
+def stable_id(prefix, *parts):
+    h = hashlib.sha1("|".join(map(str, parts)).encode()).hexdigest()[:12].upper()
+    return f"{prefix}-{h}"
+
+
+def svc():
+    creds, _ = google.auth.default(scopes=SCOPES)
+    return build("sheets", "v4", credentials=creds, cache_discovery=False)
+
+
+def read_table(s, tab, end_col):
+    vals = s.spreadsheets().values().get(spreadsheetId=SPREADSHEET_ID, range=f"'{tab}'!A1:{end_col}5000").execute().get("values", [])
+    if not vals:
+        raise RuntimeError(f"Empty sheet {tab}")
+    headers = vals[0]
+    rows = []
+    for rn, row in enumerate(vals[1:], 2):
+        row = row + [""] * (len(headers) - len(row))
+        rows.append((rn, dict(zip(headers, row))))
+    return headers, rows
+
+
+def col_letter(n):
+    out = ""
+    while n:
+        n, rem = divmod(n - 1, 26)
+        out = chr(65 + rem) + out
+    return out
+
+
+def append_row(s, tab, headers, data, dry):
+    if dry:
+        return
+    last = col_letter(len(headers))
+    row = [data.get(h, "") for h in headers]
+    s.spreadsheets().values().append(
+        spreadsheetId=SPREADSHEET_ID,
+        range=f"'{tab}'!A:{last}", valueInputOption="RAW", insertDataOption="INSERT_ROWS",
+        body={"values": [row]},
+    ).execute()
+
+
+def parse_fitment(row):
+    text = str(row.get("fitment_text", "")).strip()
+    make = str(row.get("vehicle_make", "")).strip().upper()
+    base, _, notes = text.partition(" | Important notes:")
+    rest = base
+    if make and rest.upper().startswith(make + " "):
+        rest = rest[len(make):].strip()
+    pat = re.compile(rf"^(?P<prefix>.+?)\s+(?P<engine_code>[A-Z0-9-]{{2,10}})\s+(?P<fuel>{FUEL})\s+(?P<engine>\d{{1,2}}(?:[.,]\d+)?)\s+(?P<hp>\d{{2,4}})hp\s+(?P<kw>\d{{2,4}})kw\s+(?P<yf>\d{{4}})-(?P<yt>\d{{4}}|now|current)$", re.I)
+    m = pat.match(rest)
+    if not m:
+        return {
+            "make": make, "model": base, "generation": "", "engine_code": "", "fuel": "", "engine": "",
+            "year_from": row.get("year_from", ""), "year_to": row.get("year_to", ""), "pr": "", "notes": text,
+        }
+    prefix = m.group("prefix").strip()
+    generation = ""
+    model = prefix
+    pm = re.search(r"\s+((?:[A-Z]\d+|[IVX]+)\s+)?(\([^)]{2,40}\))$", prefix, re.I)
+    if pm:
+        candidate = (pm.group(1) or "") + pm.group(2)
+        generation = candidate.strip()
+        model = prefix[:pm.start()].strip()
+    pr = ""
+    prm = re.search(r"(?:For\s+)?PR\s+number\s*:\s*([^;|]+)", notes, re.I)
+    if prm:
+        pr = prm.group(1).strip()
+    return {
+        "make": make, "model": model, "generation": generation,
+        "engine_code": m.group("engine_code").upper(), "fuel": m.group("fuel"),
+        "engine": m.group("engine").replace(",", "."), "year_from": m.group("yf"),
+        "year_to": m.group("yt").lower().replace("current", "now"), "pr": pr, "notes": text,
+    }
+
+
+def main():
+    ap = argparse.ArgumentParser()
+    ap.add_argument("--payload", required=True)
+    ap.add_argument("--dry-run", action="store_true")
+    args = ap.parse_args()
+    payload = json.loads(Path(args.payload).read_text(encoding="utf-8"))
+    gate = payload.get("automation_gate", {})
+    cars = payload.get("cars245", {})
+    offer = payload.get("offer_input", {})
+    if not gate.get("ai_eligible"):
+        print(json.dumps({"status":"SKIPPED_REVIEW_GATE","reason":gate.get("review_reason","")}, ensure_ascii=False))
+        return
+
+    oem = str(offer.get("oem_number", "")).strip()
+    if not norm(oem):
+        raise SystemExit("Safe fitment gate passed but OEM is empty")
+    supplier_part = str(offer.get("supplier_part_number", "")).strip()
+    manufacturer_brand = str(offer.get("manufacturer_brand", "")).strip()
+    catalog_brand = str(offer.get("catalog_brand", "")).strip().upper()
+    today = datetime.now(timezone.utc).strftime("%Y-%m-%d")
+    s = svc()
+
+    h38, r38 = read_table(s, "38_Product_Identifiers", "R")
+    existing = next((r for _, r in r38 if norm(r.get("Original_Value")) == norm(oem) or norm(r.get("Normalized_Value")) == norm(oem)), None)
+    product_id = str(existing.get("Product_ID", "")).strip() if existing else oem
+    created_ids = 0
+    if not existing:
+        append_row(s, "38_Product_Identifiers", h38, {
+            "Identifier_ID": stable_id("ID-AUTO", product_id, "OEM", norm(oem)),
+            "Product_ID": product_id,
+            "Identifier_Type": "OEM",
+            "Original_Value": oem,
+            "Normalized_Value": norm(oem),
+            "Brand": catalog_brand,
+            "Source_Type": "Cars245",
+            "Source_Record_ID": norm(oem),
+            "Source_File": "Cars245 / GitHub Actions",
+            "Verified_Status": "Verified",
+            "Extraction_Confidence": "High",
+            "Is_Primary": "TRUE",
+            "Last_Checked_At": today,
+            "Notes": "Exact searched OEM; safe Cars245 fitment gate passed",
+        }, args.dry_run)
+        created_ids += 1
+
+    # Add supplier MPN only when Cars245 returned that exact MPN as an alternative.
+    found_mpn = False
+    for alt in cars.get("alternatives", []):
+        if norm(alt.get("part_number")) == norm(supplier_part) and norm(supplier_part):
+            found_mpn = True
+            break
+    if found_mpn and not any(norm(r.get("Original_Value")) == norm(supplier_part) for _, r in r38):
+        append_row(s, "38_Product_Identifiers", h38, {
+            "Identifier_ID": stable_id("ID-AUTO", product_id, "MPN", norm(supplier_part)),
+            "Product_ID": product_id,
+            "Identifier_Type": "Manufacturer Part Number",
+            "Original_Value": supplier_part,
+            "Normalized_Value": norm(supplier_part),
+            "Brand": manufacturer_brand,
+            "Source_Type": "Cars245",
+            "Source_Record_ID": norm(oem),
+            "Source_File": "Cars245 / GitHub Actions",
+            "Verified_Status": "Verified Cross-Reference",
+            "Extraction_Confidence": "High",
+            "Is_Primary": "FALSE",
+            "Last_Checked_At": today,
+            "Notes": "Exact supplier MPN returned by Cars245 alternative list",
+        }, args.dry_run)
+        created_ids += 1
+
+    h39, r39 = read_table(s, "39_Vehicle_Fitment", "V")
+    existing_keys = {
+        (str(r.get("Product_ID", "")), norm(r.get("Vehicle_Make")), norm(r.get("Vehicle_Model")), norm(r.get("Engine_Code")), str(r.get("Year_From", "")), str(r.get("Year_To", "")), norm(r.get("PR_Code")))
+        for _, r in r39
+    }
+    created_fitments = 0
+    for raw in cars.get("fitments", []):
+        f = parse_fitment(raw)
+        key = (product_id, norm(f["make"]), norm(f["model"]), norm(f["engine_code"]), str(f["year_from"]), str(f["year_to"]), norm(f["pr"]))
+        if key in existing_keys:
+            continue
+        existing_keys.add(key)
+        source_url = str(raw.get("source_url", ""))
+        append_row(s, "39_Vehicle_Fitment", h39, {
+            "Fitment_ID": stable_id("FIT-AUTO", *key),
+            "Product_ID": product_id,
+            "Vehicle_Make": f["make"],
+            "Vehicle_Model": f["model"],
+            "Generation": f["generation"],
+            "Year_From": f["year_from"],
+            "Year_To": f["year_to"],
+            "Engine": f["engine"],
+            "Engine_Code": f["engine_code"],
+            "Transmission": "Verify exact transmission/variant by VIN when applicable",
+            "Fuel_Type": f["fuel"],
+            "Body_Type": "",
+            "PR_Code": f["pr"],
+            "VIN_Rule": "Check VIN + PR/engine code before final confirmation when variant is conditional",
+            "Fitment_Status": "Compatible - conditional",
+            "Verification_Source": "Cars245",
+            "Source_Record_ID": norm(oem),
+            "Source_File": "Cars245 / GitHub Actions",
+            "Verified_Status": "Verified source; exact variant conditional",
+            "Last_Checked_At": today,
+            "Notes": f["notes"] + (f" | Source: {source_url}" if source_url else ""),
+        }, args.dry_run)
+        created_fitments += 1
+
+    print(json.dumps({
+        "status":"DRY_RUN" if args.dry_run else "SUCCESS",
+        "product_id":product_id,
+        "identifiers_created":created_ids,
+        "fitments_created":created_fitments,
+        "fitments_input":len(cars.get("fitments", [])),
+    }, ensure_ascii=False))
+
+if __name__ == "__main__":
+    main()

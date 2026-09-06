@@ -1,0 +1,1 @@
+Supplier sheet polling + Cars245 + pricing + Google Sheets sync tested on an isolated branch. WIF live authentication succeeded; safe baseline scan at row 1229 returned zero new candidates before deployment.
