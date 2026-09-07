@@ -6,6 +6,15 @@ selection and allowing one automatic retry for previously-audited items that
 still have no stored fitment.
 """
 import re
+import sys
+from pathlib import Path
+
+# When this file is executed directly as tools/<script>.py, Python adds the
+# tools directory (not the repository root) to sys.path. Add only the repo root
+# so the existing `tools` package can be imported without changing old logic.
+ROOT = Path(__file__).resolve().parents[1]
+if str(ROOT) not in sys.path:
+    sys.path.insert(0, str(ROOT))
 
 from tools import enrich_ai_fitment_backlog as base
 
