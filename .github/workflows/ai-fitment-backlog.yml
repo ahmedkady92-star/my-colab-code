@@ -9,6 +9,7 @@ on:
       - main
     paths:
       - tools/enrich_ai_fitment_backlog.py
+      - tools/upsert_verified_fitment.py
       - .github/workflows/ai-fitment-backlog.yml
 
 permissions:
