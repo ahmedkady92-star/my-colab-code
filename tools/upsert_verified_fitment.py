@@ -28,7 +28,7 @@ def svc():
 def read_table(s, tab, end_col):
     vals = s.spreadsheets().values().get(
         spreadsheetId=SPREADSHEET_ID, range=f"'{tab}'!A1:{end_col}5000"
-    ).execute().get("values", [])
+    ).execute(num_retries=5).get("values", [])
     if not vals:
         raise RuntimeError(f"Empty sheet {tab}")
     headers = vals[0]
@@ -58,7 +58,7 @@ def append_rows(s, tab, headers, rows, dry):
         valueInputOption="RAW",
         insertDataOption="INSERT_ROWS",
         body={"values": values},
-    ).execute()
+    ).execute(num_retries=5)
 
 
 def append_row(s, tab, headers, data, dry):
@@ -80,7 +80,7 @@ def batch_update_fields(s, tab, headers, updates, dry):
         s.spreadsheets().values().batchUpdate(
             spreadsheetId=SPREADSHEET_ID,
             body={"valueInputOption": "RAW", "data": data},
-        ).execute()
+        ).execute(num_retries=5)
 
 
 def update_fields(s, tab, row_no, headers, data, dry):
