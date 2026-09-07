@@ -9,6 +9,7 @@ on:
       - main
     paths:
       - tools/enrich_ai_fitment_backlog.py
+      - tools/enrich_ai_fitment_backlog_safe.py
       - tools/upsert_verified_fitment.py
       - .github/workflows/ai-fitment-backlog.yml
 
@@ -40,7 +41,7 @@ jobs:
       - name: Enrich up to five missing fitment products
         env:
           ELKADY_SPREADSHEET_ID: 1A-8YoZkVIdelh2x3i7DmeFCERLeR1XREyEpK3Wrk6B0
-        run: python tools/enrich_ai_fitment_backlog.py --max-items 5 --max-brands 5
+        run: python tools/enrich_ai_fitment_backlog_safe.py --max-items 5 --max-brands 5
       - name: Propagate fitment summaries to all matching AI price/brand rows
         env:
           ELKADY_SPREADSHEET_ID: 1A-8YoZkVIdelh2x3i7DmeFCERLeR1XREyEpK3Wrk6B0
