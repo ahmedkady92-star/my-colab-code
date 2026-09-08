@@ -19,6 +19,16 @@ if str(ROOT) not in sys.path:
 from tools import enrich_ai_fitment_backlog as base
 
 MAX_AUTO_ATTEMPTS = 2
+# One controlled extra attempt for five unresolved Porsche rows only. This is
+# deliberately keyed by AI_Feed_ID so no other audited rows are reopened.
+EXTRA_RETRY_IDS = {
+    "AI-KANO-0178",      # PAB 199 371 10
+    "AI-KANO-0185",      # 991 572 371 00
+    "AI-KANO-0190",      # 9P1 411 318 A
+    "AI-KANO-CHAT-0002", # 7PP 199 331 A
+    "AI-KANO-MAN-0008",  # PAB 819 439 00
+}
+EXTRA_RETRY_ATTEMPTS = 3
 SUPPLIER_CODE_RE = re.compile(r"^\d{3}[A-Z]{2}$", re.I)
 SUPPLIER_PREFIX_WITH_OEM_RE = re.compile(r"^\s*\d{3}[A-Z]{2}\s+(.+?)\s*$", re.I)
 
@@ -51,10 +61,11 @@ def first_part(value):
 
 
 def audit_done(rows):
-    """Auto-retry unresolved audited items once, then stop repeating them forever.
+    """Retry unresolved audited rows once, plus one controlled Porsche re-check.
 
-    Successful items are already skipped by the base script's fitment-key check,
-    so this count applies only to rows that still have no stored fitment.
+    Successful items are already skipped by the base script's fitment-key check.
+    The five explicit Porsche rows get exactly one extra audit attempt; all other
+    rows keep the existing two-attempt ceiling.
     """
     counts = {}
     for _, row in rows:
@@ -63,7 +74,12 @@ def audit_done(rows):
         rid = str(row.get("Source_Record_ID", "")).strip()
         if rid:
             counts[rid] = counts.get(rid, 0) + 1
-    return {rid for rid, count in counts.items() if count >= MAX_AUTO_ATTEMPTS}
+    done = set()
+    for rid, count in counts.items():
+        limit = EXTRA_RETRY_ATTEMPTS if rid in EXTRA_RETRY_IDS else MAX_AUTO_ATTEMPTS
+        if count >= limit:
+            done.add(rid)
+    return done
 
 
 # Monkey-patch only the candidate/retry policy; preserve all existing write,
