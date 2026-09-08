@@ -2,8 +2,8 @@
 """Safer wrapper for the AI fitment backlog.
 
 This keeps the existing enrichment logic intact while tightening candidate
-selection and allowing one automatic retry for previously-audited items that
-still have no stored fitment.
+selection and allowing controlled retries for explicitly selected unresolved
+Porsche rows.
 """
 import re
 import sys
@@ -19,8 +19,9 @@ if str(ROOT) not in sys.path:
 from tools import enrich_ai_fitment_backlog as base
 
 MAX_AUTO_ATTEMPTS = 2
-# One controlled extra attempt for five unresolved Porsche rows only. This is
-# deliberately keyed by AI_Feed_ID so no other audited rows are reopened.
+# Controlled extra attempt for these five unresolved Porsche AI feed rows only.
+# audit_done() intentionally excludes these IDs from the done set; successful
+# rows remain protected by the base script's existing fitment-key check.
 EXTRA_RETRY_IDS = {
     "AI-KANO-0178",      # PAB 199 371 10
     "AI-KANO-0185",      # 991 572 371 00
@@ -28,7 +29,6 @@ EXTRA_RETRY_IDS = {
     "AI-KANO-CHAT-0002", # 7PP 199 331 A
     "AI-KANO-MAN-0008",  # PAB 819 439 00
 }
-EXTRA_RETRY_ATTEMPTS = 3
 SUPPLIER_CODE_RE = re.compile(r"^\d{3}[A-Z]{2}$", re.I)
 SUPPLIER_PREFIX_WITH_OEM_RE = re.compile(r"^\s*\d{3}[A-Z]{2}\s+(.+?)\s*$", re.I)
 
@@ -37,7 +37,6 @@ def valid_part(value):
     n = base.norm(value)
     if len(n) < 5 or not any(ch.isdigit() for ch in n):
         return False
-    # Known supplier-style short codes such as 291AD / 065AK / 133AT are not OEMs.
     if SUPPLIER_CODE_RE.fullmatch(n):
         return False
     return True
@@ -48,8 +47,6 @@ def first_part(value):
         token = token.strip()
         if not token:
             continue
-        # Some supplier cells contain a supplier code followed by the real OEM,
-        # e.g. "133AC 06A121132R". Prefer the OEM portion.
         m = SUPPLIER_PREFIX_WITH_OEM_RE.match(token)
         if m:
             candidate = m.group(1).strip()
@@ -61,12 +58,7 @@ def first_part(value):
 
 
 def audit_done(rows):
-    """Retry unresolved audited rows once, plus one controlled Porsche re-check.
-
-    Successful items are already skipped by the base script's fitment-key check.
-    The five explicit Porsche rows get exactly one extra audit attempt; all other
-    rows keep the existing two-attempt ceiling.
-    """
+    """Keep normal two-attempt ceiling, but reopen only selected Porsche IDs."""
     counts = {}
     for _, row in rows:
         if str(row.get("Source_System", "")).strip().upper() != base.AUDIT_SOURCE:
@@ -74,16 +66,20 @@ def audit_done(rows):
         rid = str(row.get("Source_Record_ID", "")).strip()
         if rid:
             counts[rid] = counts.get(rid, 0) + 1
+
     done = set()
     for rid, count in counts.items():
-        limit = EXTRA_RETRY_ATTEMPTS if rid in EXTRA_RETRY_IDS else MAX_AUTO_ATTEMPTS
-        if count >= limit:
+        # Explicit test rows are allowed through candidate selection regardless
+        # of their old audit count. Once fitment is found, fit_keys skips them.
+        if rid in EXTRA_RETRY_IDS:
+            continue
+        if count >= MAX_AUTO_ATTEMPTS:
             done.add(rid)
     return done
 
 
-# Monkey-patch only the candidate/retry policy; preserve all existing write,
-# scoring, Cars245, fitment safety, and audit behavior from the base module.
+# Patch only candidate parsing/retry policy. All Cars245 research, scoring,
+# safety gates and write logic remain in the existing base implementation.
 base.valid_part = valid_part
 base.first_part = first_part
 base.audit_done = audit_done
