@@ -41,6 +41,15 @@ def safe_id(original):
     return f"WAI-{digest}"
 
 
+def scrub_blocked_tokens(value):
+    txt = clean_text(value)
+    for token in BLOCKED_TOKENS:
+        txt = re.sub(re.escape(token), "", txt, flags=re.I)
+    txt = re.sub(r"\s{2,}", " ", txt)
+    txt = re.sub(r"\s*[-+/|]+\s*[-+/|]+\s*", " | ", txt)
+    return txt.strip(" |-/+")
+
+
 def safe_notes(row):
     src = clean_text(row.get("Notes"))
     segments = [x.strip() for x in src.split("|") if x.strip()]
@@ -78,12 +87,28 @@ def sanitize_row(headers, vals):
     out["Availability"] = CUSTOMER_AVAILABILITY
     out["Stock_Status"] = "Availability Confirmation Required from ELKADY AUTO PARTS Team"
     out["Notes"] = safe_notes(row)
-    for field in ("Description", "Notes"):
-        txt = out[field]
-        for token in BLOCKED_TOKENS:
-            txt = re.sub(re.escape(token), "", txt, flags=re.I)
-        out[field] = re.sub(r"\s{2,}", " ", txt).strip(" |")
+
+    # Scrub every customer-facing field, not only Description/Notes. This prevents
+    # internal-source words such as GitHub from surviving in Verified_Status or
+    # other fields and blocking the whole WhatsApp sync.
+    for field in HEADERS:
+        if field in ("AI_Feed_ID", "Product_ID", "Part_Number", "OEM_Number", "Customer_Price", "Currency", "Last_Checked_At", "AI_Eligible"):
+            continue
+        out[field] = scrub_blocked_tokens(out[field])
+
     return [out[h] for h in HEADERS]
+
+
+def find_leaks(rows):
+    leakage = []
+    leaking_indexes = set()
+    for idx, row in enumerate(rows):
+        joined = " | ".join(str(x) for x in row)
+        for token in BLOCKED_TOKENS:
+            if token.lower() in joined.lower():
+                leakage.append({"row": idx + 2, "token": token})
+                leaking_indexes.add(idx)
+    return leakage, leaking_indexes
 
 
 def main():
@@ -112,14 +137,13 @@ def main():
             continue
         safe_rows.append(sanitize_row(HEADERS, ordered))
 
-    leakage = []
-    for rnum, row in enumerate(safe_rows, start=2):
-        joined = " | ".join(str(x) for x in row)
-        for token in BLOCKED_TOKENS:
-            if token.lower() in joined.lower():
-                leakage.append({"row": rnum, "token": token})
-    if leakage:
-        raise RuntimeError(f"Unsafe data detected after sanitization: {leakage[:10]}")
+    # Defense in depth: a bad/unknown row must never stop the entire WhatsApp
+    # knowledge sync. Any row that still contains a blocked token after generic
+    # sanitization is quarantined from this run while all other safe rows sync.
+    leakage, leaking_indexes = find_leaks(safe_rows)
+    quarantined = len(leaking_indexes)
+    if leaking_indexes:
+        safe_rows = [row for i, row in enumerate(safe_rows) if i not in leaking_indexes]
 
     target = read_values(svc, TARGET_ID, f"'{TAB}'!A1:Y5000")
     target_existing_rows = max(0, len(target) - 1)
@@ -144,9 +168,13 @@ def main():
         "invalid_source_rows_skipped": invalid,
         "target_existing_rows": target_existing_rows,
         "leakage_detected": len(leakage),
+        "quarantined_rows": quarantined,
+        "leakage_preview": leakage[:10],
         "internal_ids_replaced": True,
         "source_record_ids_removed": True,
         "notes_sanitized": True,
+        "all_customer_fields_scrubbed": True,
+        "sync_continues_on_quarantined_rows": True,
     }
     Path(args.report).write_text(json.dumps(report, ensure_ascii=False, indent=2), encoding="utf-8")
     print(json.dumps(report, ensure_ascii=False, indent=2))
