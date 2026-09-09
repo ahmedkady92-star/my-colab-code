@@ -179,6 +179,9 @@ def main():
             continue
         candidates.append((rn, r, offer_id, oem, cost))
 
+    # Prioritize newest pending supplier rows while preserving the same per-run processing limit.
+    candidates.sort(key=lambda item: item[0], reverse=True)
+
     summary = {"baseline_row": args.baseline_row, "sheet_max_row": max_row, "candidate_count": len(candidates), "processed": []}
     if args.scan_only:
         print(json.dumps(summary, ensure_ascii=False, indent=2))
