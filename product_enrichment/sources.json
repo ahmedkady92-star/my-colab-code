@@ -2,9 +2,16 @@
   "zf_aftermarket": {
     "brands": ["LEMFORDER", "LEMFOERDER", "TRW", "SACHS"],
     "source_type": "official_distributor_media",
-    "image_usage_status": "unknown",
+    "image_usage_status": "reference_only",
     "requires_permission_record": true,
-    "notes": "Use only distributor/media assets whose terms explicitly allow reseller commercial use. Do not scrape public catalog images."
+    "approved_channels": {
+      "e_business_toolbox": {
+        "image_usage_status": "approved_commercial",
+        "permission_reference": "ZF Aftermarket E-Business Toolbox - official distributor/webshop service",
+        "notes": "ZF states that webshop owners/distributors can download information, images, product and marketing data for their online business. Assets must come from the authenticated E-Business Toolbox, not from scraping the public catalog."
+      }
+    },
+    "notes": "Public ZF catalog images remain reference-only. Commercial publishing is allowed by this workflow only when the asset is obtained through the authorized E-Business Toolbox channel."
   },
   "bosch": {
     "brands": ["BOSCH"],
