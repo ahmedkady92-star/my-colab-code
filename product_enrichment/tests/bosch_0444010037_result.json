@@ -1,0 +1,37 @@
+{
+  "test_id": "bosch_0444010037_2026-09-10",
+  "status": "passed_with_publish_block",
+  "input": {
+    "part_number": "0444010037",
+    "brand": "BOSCH"
+  },
+  "official_source": {
+    "name": "Bosch AutoParts Catalogue",
+    "url": "https://ap-ecat.boschaftermarket.com/SG/en_SG/products/0444010037",
+    "verified": true
+  },
+  "extracted": {
+    "product_name": "DNOX supply module",
+    "category": "DNOX",
+    "product_segment": "CV",
+    "length_unpacked_mm": 350.4,
+    "width_unpacked_mm": 295.4,
+    "height_unpacked_mm": 215.7,
+    "official_image_candidates_found": 4,
+    "image_urls_saved_for_publication": false
+  },
+  "image_rights": {
+    "status": "reference_only",
+    "commercial_publish_allowed": false,
+    "reason": "Bosch public-site legal terms do not grant commercial reuse permission for site images without consent."
+  },
+  "pipeline_result": {
+    "woo_status": "draft_blocked",
+    "blockers": [
+      "missing_compatibility",
+      "image_not_licensed_for_commercial_use"
+    ],
+    "woocommerce_modified": false,
+    "existing_fitment_workflow_modified": false
+  }
+}
