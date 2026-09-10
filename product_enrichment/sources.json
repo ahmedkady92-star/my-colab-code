@@ -1,0 +1,37 @@
+{
+  "zf_aftermarket": {
+    "brands": ["LEMFORDER", "LEMFOERDER", "TRW", "SACHS"],
+    "source_type": "official_distributor_media",
+    "image_usage_status": "unknown",
+    "requires_permission_record": true,
+    "notes": "Use only distributor/media assets whose terms explicitly allow reseller commercial use. Do not scrape public catalog images."
+  },
+  "bosch": {
+    "brands": ["BOSCH"],
+    "source_type": "official_catalog",
+    "image_usage_status": "reference_only",
+    "requires_permission_record": true,
+    "notes": "Public catalog images are reference-only until a reseller/media permission or licensed feed is confirmed."
+  },
+  "mahle": {
+    "brands": ["MAHLE", "KNECHT"],
+    "source_type": "official_catalog",
+    "image_usage_status": "reference_only",
+    "requires_permission_record": true,
+    "notes": "Do not publish catalog/media images until commercial reuse is explicitly permitted."
+  },
+  "ate": {
+    "brands": ["ATE"],
+    "source_type": "official_catalog",
+    "image_usage_status": "unknown",
+    "requires_permission_record": true,
+    "notes": "Product data may be referenced; block image publication until licensing is verified."
+  },
+  "valeo": {
+    "brands": ["VALEO"],
+    "source_type": "official_catalog",
+    "image_usage_status": "unknown",
+    "requires_permission_record": true,
+    "notes": "Pending verification of distributor/media feed rights."
+  }
+}
