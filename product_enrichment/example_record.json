@@ -1,0 +1,22 @@
+{
+  "part_number": "5Q0 698 151 AH",
+  "brand": "ATE",
+  "product_name": null,
+  "category": "Brake Pads",
+  "source_name": "ate",
+  "source_url": null,
+  "image_urls": [],
+  "image_usage_status": "unknown",
+  "permission_reference": null,
+  "oe_numbers": [],
+  "specifications": {},
+  "compatibility": [],
+  "supplier": null,
+  "supplier_cost": null,
+  "customer_price": null,
+  "woo_status": "draft_blocked",
+  "blockers": [
+    "missing_product_name",
+    "missing_compatibility"
+  ]
+}
