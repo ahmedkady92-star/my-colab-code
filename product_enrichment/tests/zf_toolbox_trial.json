@@ -1,0 +1,17 @@
+{
+  "test_name": "zf_authorized_channel_trial_001",
+  "brand_family": ["LEMFORDER", "TRW", "SACHS"],
+  "source": "ZF Aftermarket E-Business Toolbox",
+  "source_status": "official_distributor_webshop_channel",
+  "commercial_image_rule": {
+    "public_catalog": "reference_only",
+    "e_business_toolbox": "approved_commercial_when_asset_is_obtained_from_authenticated_toolbox",
+    "permission_reference": "ZF Aftermarket distributor services: E-Business Toolbox provides information, images, product and marketing data for online business"
+  },
+  "trial_result": "licensing_path_verified_but_no_authenticated_toolbox_asset_downloaded",
+  "woo_status": "draft_blocked",
+  "blockers": [
+    "no_authenticated_zf_toolbox_asset_available_in_current_connection"
+  ],
+  "safety_note": "Do not publish an image merely because it appears in the public ZF catalog. Promote to approved_commercial only when the exact image asset is obtained from the authorized E-Business Toolbox channel."
+}
