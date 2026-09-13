@@ -53,6 +53,13 @@ def norm(value):
     return re.sub(r"[^A-Z0-9]", "", str(value or "").upper())
 
 
+def normalize_text(value):
+    text = str(value or "").strip().lower()
+    text = text.translate(str.maketrans({"أ": "ا", "إ": "ا", "آ": "ا", "ى": "ي", "ة": "ه", "ؤ": "و", "ئ": "ي"}))
+    text = re.sub(r"[^0-9a-z\u0600-\u06ff]+", " ", text)
+    return re.sub(r"\s+", " ", text).strip()
+
+
 def stable_id(prefix, *parts):
     raw = "|".join(str(x or "") for x in parts)
     return f"{prefix}-{hashlib.sha1(raw.encode('utf-8')).hexdigest()[:12].upper()}"
@@ -189,13 +196,15 @@ def build_intelligence(data, today=None):
             quality.append(issue("Product", pid, "OEM_Number", "Ambiguous product-to-fitment mapping", "Critical", r.get("OEM_Number", ""), ";".join(sorted(ambiguous)), "12_Product_Catalog", today))
         for gid in sorted(matched):
             map_id = stable_id("PFM", pid, gid)
+            product_type = str(r.get("Product_Type", "")).upper()
+            product_brand = str(r.get("Brand", "")).upper()
             product_map[map_id] = {
                 "Map_ID": map_id,
                 "Product_ID": pid,
                 "Fitment_Group_ID": gid,
                 "Product_Brand": str(r.get("Brand", "")).strip(),
                 "Product_MPN": str(r.get("Part_Number") or r.get("OEM_Number") or "").strip(),
-                "Relationship_Type": "OEM" if str(r.get("Product_Type", "")).upper() in {"OEM", "ORIGINAL", "GENUINE"} else "Aftermarket equivalent",
+                "Relationship_Type": "OEM" if product_type in {"OEM", "ORIGINAL", "GENUINE"} or product_brand in {"ORIGINAL", "OEM", "GENUINE"} else "Aftermarket equivalent",
                 "Mapping_Status": "Verified",
                 "Verification_Source": "38_Product_Identifiers",
                 "Source_Record_ID": pid,
@@ -272,6 +281,7 @@ def build_intelligence(data, today=None):
 
     demand_events = defaultdict(list)
     seen_request_ids = set()
+    seen_demand_fingerprints = set()
     for r in requests:
         rid = str(r.get("Request_ID", "")).strip()
         if rid and rid in seen_request_ids:
@@ -279,9 +289,19 @@ def build_intelligence(data, today=None):
             continue
         if rid:
             seen_request_ids.add(rid)
-        key = norm(r.get("OEM_Reference_Number") or r.get("Part_Number"))
-        if key:
-            demand_events[key].append(r)
+        exact_key = norm(r.get("OEM_Reference_Number") or r.get("Part_Number"))
+        description_key = normalize_text(r.get("Requested_Part"))
+        key = exact_key or (stable_id("TXT", description_key) if len(description_key) >= 4 else "")
+        if not key:
+            continue
+        request_date = parse_date(r.get("Date_Created"))
+        customer = str(r.get("Customer_ID", "")).strip()
+        fingerprint = (key, customer or rid, request_date.isoformat() if request_date else str(r.get("Date_Created", "")))
+        if fingerprint in seen_demand_fingerprints:
+            quality.append(issue("Part Request", rid, "Demand_Event", "Potential duplicate demand event", "Medium", str(fingerprint), "Count once; preserve source row", "08_Part_Requests", today, "Same part/customer/date does not inflate demand"))
+            continue
+        seen_demand_fingerprints.add(fingerprint)
+        demand_events[key].append(r)
 
     demand_rows = []
     recommendations = []
@@ -310,9 +330,10 @@ def build_intelligence(data, today=None):
         sold90 = sum("SOLD" in (str(r.get("Customer_Intent", "")) + "|" + str(r.get("Request_Status", ""))).upper() for r in recent90)
         lost90 = sum("LOST" in str(r.get("Request_Status", "")).upper() and ("UNAVAILABLE" in str(r.get("Part_Availability", "")).upper() or "NO STOCK" in str(r.get("Notes", "")).upper() or "غير متوفر" in str(r.get("Notes", ""))) for r in recent90)
         no_result90 = sum(str(r.get("Source", "")).upper() == "WEBSITE" and ("UNAVAILABLE" in str(r.get("Part_Availability", "")).upper() or "NO RESULT" in str(r.get("Notes", "")).upper() or "لم نجد" in str(r.get("Notes", ""))) for r in recent90)
-        groups = identifier_groups.get(key, set())
+        text_only = key.startswith("TXT-")
+        groups = set() if text_only else identifier_groups.get(key, set())
         gid = next(iter(groups)) if len(groups) == 1 else ""
-        match_status = "Matched" if len(groups) == 1 else "Conflict" if len(groups) > 1 else "Unmatched"
+        match_status = "Matched" if len(groups) == 1 else "Conflict" if len(groups) > 1 else "Review Required" if text_only else "Unmatched"
         pids = sorted(pid for pid, gs in product_groups.items() if gid and gid in gs and pid in catalog_by_product)
         pid = pids[0] if len(pids) == 1 else ""
         stock = inventory_by_key[key].copy()
@@ -340,7 +361,7 @@ def build_intelligence(data, today=None):
             "Lost_No_Stock_90D": lost90, "Website_No_Result_90D": no_result90, "Demand_Score": round(score, 2),
             "Demand_Class": demand_class, "Last_Request_Date": last_date.isoformat() if last_date else "",
             "Match_Status": match_status,
-            "Notes": "Multiple sellable alternatives" if len(pids) > 1 else ("Exact OEM/part key required; textual requests are excluded" if not gid else ""),
+            "Notes": "Text-only demand; Part Number/VIN required before purchasing" if text_only else "Multiple sellable alternatives" if len(pids) > 1 else ("Exact OEM/part key is not mapped yet" if not gid else ""),
             "Last_Refresh": today.isoformat(),
         })
 
@@ -349,7 +370,7 @@ def build_intelligence(data, today=None):
         best = eligible_offers[0] if eligible_offers else {}
         weekly = qty90 / 13.0
         target = math.ceil(weekly * 4 + (1 if demand_class in {"Important", "High Demand", "Purchase Priority"} else 0))
-        suggested = max(0, target - int(stock["available"]))
+        suggested = 0 if text_only else max(0, target - int(stock["available"]))
         if demand_class in {"Important", "High Demand", "Purchase Priority"}:
             recommendations.append({
                 "Recommendation_ID": stable_id("REC", key, today.isoformat()), "Demand_Key": key,
@@ -359,7 +380,7 @@ def build_intelligence(data, today=None):
                 "Supplier_Offer_Count": len(eligible_offers), "Best_Supplier": str(best.get("Supplier_Name", "")),
                 "Latest_Cost_EGP": number(best.get("Supplier_Cost"), "") if best else "",
                 "Supplier_Lead_Time_Days": "", "Suggested_Reorder_Qty": suggested,
-                "Recommendation_Reason": f"{len(recent90)} requests / {len(dates90)} distinct dates / stock {stock['available']:g}",
+                "Recommendation_Reason": (f"{len(recent90)} requests / {len(dates90)} distinct dates; obtain Part Number/VIN before purchase" if text_only else f"{len(recent90)} requests / {len(dates90)} distinct dates / stock {stock['available']:g}"),
                 "Decision_Status": "Review", "Owner_Approval": "Pending Review", "Last_Refresh": today.isoformat(),
                 "Notes": "Recommendation only; confirm VIN, current supplier availability and cost before purchase",
             })
