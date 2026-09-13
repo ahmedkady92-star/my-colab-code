@@ -13,6 +13,24 @@ def norm(v):
     return re.sub(r"[^A-Z0-9]", "", str(v or "").upper())
 
 
+def split_refs(value):
+    """Split multi-value OEM/MPN cells into independent lookup keys."""
+    out = []
+    seen = set()
+    for token in re.split(r"[;|,/\n]+", str(value or "")):
+        key = norm(token)
+        if len(key) < 5 or not any(ch.isdigit() for ch in key) or key in seen:
+            continue
+        seen.add(key)
+        out.append(key)
+    return out
+
+
+def is_verified_fitment(row):
+    """Only evidence-backed fitments may reach the customer-facing AI feed."""
+    return str(row.get("Verified_Status", "")).strip().upper().startswith("VERIFIED")
+
+
 def year_int(v):
     m = re.search(r"(19|20)\d{2}", str(v or ""))
     return int(m.group(0)) if m else None
@@ -109,6 +127,8 @@ def main():
 
     fitment_index = defaultdict(list)
     for _, r in fitments:
+        if not is_verified_fitment(r):
+            continue
         for key in {norm(r.get("Product_ID")), norm(r.get("Source_Record_ID"))}:
             if key:
                 fitment_index[key].append(r)
@@ -123,8 +143,7 @@ def main():
         if not ai_id:
             skipped_invalid_ai += 1
             continue
-        keys = {norm(ai.get("Part_Number")), norm(ai.get("OEM_Number"))}
-        keys.discard("")
+        keys = set(split_refs(ai.get("Part_Number")) + split_refs(ai.get("OEM_Number")))
         if not keys:
             skipped_no_key += 1
             continue
@@ -141,13 +160,10 @@ def main():
             continue
 
         s = summarize(matched)
-        fitment_note = f"Fitment summary from 39_Vehicle_Fitment: {s['Vehicle_Model']}."
-        if s["candidate"]:
-            fitment_note += " Candidate fitment only; confirm OEM/supersession and VIN/PR before final customer confirmation."
-        else:
-            fitment_note += " Confirm VIN/PR when the application is conditional."
+        fitment_note = f"Verified fitment summary from 39_Vehicle_Fitment: {s['Vehicle_Model']}."
+        fitment_note += " Confirm VIN/PR when the application is conditional."
         old_notes = str(ai.get("Notes", "")).strip()
-        old_notes = re.sub(r"\s*\|\s*Fitment summary from 39_Vehicle_Fitment:.*$", "", old_notes, flags=re.I)
+        old_notes = re.sub(r"\s*\|\s*(?:Verified )?Fitment summary from 39_Vehicle_Fitment:.*$", "", old_notes, flags=re.I)
         notes = (old_notes + " | " + fitment_note).strip(" |")
 
         changes = {
@@ -170,7 +186,7 @@ def main():
             "vehicle_model": s["Vehicle_Model"],
             "year_from": s["Year_From"],
             "year_to": s["Year_To"],
-            "candidate": s["candidate"],
+            "candidate": False,
             "changed": changed,
         })
         if not changed:
