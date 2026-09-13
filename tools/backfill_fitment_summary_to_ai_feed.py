@@ -13,6 +13,24 @@ def norm(v):
     return re.sub(r"[^A-Z0-9]", "", str(v or "").upper())
 
 
+def split_refs(value):
+    """Split multi-value OEM/MPN cells into independent lookup keys."""
+    out = []
+    seen = set()
+    for token in re.split(r"[;|,/\n]+", str(value or "")):
+        key = norm(token)
+        if len(key) < 5 or not any(ch.isdigit() for ch in key) or key in seen:
+            continue
+        seen.add(key)
+        out.append(key)
+    return out
+
+
+def is_verified_fitment(row):
+    """Only evidence-backed fitments may reach the customer-facing AI feed."""
+    return str(row.get("Verified_Status", "")).strip().upper().startswith("VERIFIED")
+
+
 def year_int(v):
     m = re.search(r"(19|20)\d{2}", str(v or ""))
     return int(m.group(0)) if m else None
@@ -60,8 +78,10 @@ def summarize(rows):
         status = str(row.get("Fitment_Status", "")).strip()
         if make and make not in makes:
             makes.append(make)
-        if code and code not in engines:
-            engines.append(code)
+        for one_code in re.split(r"[;,|/]+", code):
+            one_code = one_code.strip()
+            if one_code and one_code not in engines:
+                engines.append(one_code)
         if yf: all_years.append(yf)
         if yt: all_years.append(yt)
         if status: statuses.add(status)
@@ -76,7 +96,11 @@ def summarize(rows):
             continue
         start = min(yrs["from"]) if yrs["from"] else None
         end = max(yrs["to"]) if yrs["to"] else None
-        name = " ".join(x for x in (make, model, gen) if x)
+        # Some imported model labels already contain the generation. Avoid
+        # output such as "A4 B9 (...) B9 (...)" in customer-facing summaries.
+        model_norm = norm(model)
+        gen_for_name = "" if gen and norm(gen) in model_norm else gen
+        name = " ".join(x for x in (make, model, gen_for_name) if x)
         if start and end:
             name += f" {start}-{end}"
         summaries.append(name)
@@ -109,6 +133,8 @@ def main():
 
     fitment_index = defaultdict(list)
     for _, r in fitments:
+        if not is_verified_fitment(r):
+            continue
         for key in {norm(r.get("Product_ID")), norm(r.get("Source_Record_ID"))}:
             if key:
                 fitment_index[key].append(r)
@@ -123,8 +149,7 @@ def main():
         if not ai_id:
             skipped_invalid_ai += 1
             continue
-        keys = {norm(ai.get("Part_Number")), norm(ai.get("OEM_Number"))}
-        keys.discard("")
+        keys = set(split_refs(ai.get("Part_Number")) + split_refs(ai.get("OEM_Number")))
         if not keys:
             skipped_no_key += 1
             continue
@@ -141,13 +166,10 @@ def main():
             continue
 
         s = summarize(matched)
-        fitment_note = f"Fitment summary from 39_Vehicle_Fitment: {s['Vehicle_Model']}."
-        if s["candidate"]:
-            fitment_note += " Candidate fitment only; confirm OEM/supersession and VIN/PR before final customer confirmation."
-        else:
-            fitment_note += " Confirm VIN/PR when the application is conditional."
+        fitment_note = f"Verified fitment summary from 39_Vehicle_Fitment: {s['Vehicle_Model']}."
+        fitment_note += " Confirm VIN/PR when the application is conditional."
         old_notes = str(ai.get("Notes", "")).strip()
-        old_notes = re.sub(r"\s*\|\s*Fitment summary from 39_Vehicle_Fitment:.*$", "", old_notes, flags=re.I)
+        old_notes = re.sub(r"\s*\|\s*(?:Verified )?Fitment summary from 39_Vehicle_Fitment:.*$", "", old_notes, flags=re.I)
         notes = (old_notes + " | " + fitment_note).strip(" |")
 
         changes = {
@@ -170,20 +192,22 @@ def main():
             "vehicle_model": s["Vehicle_Model"],
             "year_from": s["Year_From"],
             "year_to": s["Year_To"],
-            "candidate": s["candidate"],
+            "candidate": False,
             "changed": changed,
         })
         if not changed:
             continue
 
-        row_values = [ai.get(h, "") for h in h41]
         for k, v in changes.items():
             if k in header_pos:
-                row_values[header_pos[k]] = v
-        updates.append({
-            "range": f"'41_AI_Product_Feed'!A{rn}:{col_letter(len(h41))}{rn}",
-            "values": [row_values],
-        })
+                # Write only the derived fitment field. Replacing the whole AI
+                # feed row would flatten formulas and could overwrite pricing,
+                # stock or owner-approved values unrelated to compatibility.
+                col = col_letter(header_pos[k] + 1)
+                updates.append({
+                    "range": f"'41_AI_Product_Feed'!{col}{rn}",
+                    "values": [[v]],
+                })
 
     if args.apply and updates:
         svc.spreadsheets().values().batchUpdate(
@@ -197,8 +221,8 @@ def main():
         "ai_rows_scanned": len(ai_rows),
         "fitment_rows_scanned": len(fitments),
         "matched_ai_rows": len(report_rows),
-        "rows_needing_update": len(updates),
-        "rows_written": len(updates) if args.apply else 0,
+        "cells_needing_update": len(updates),
+        "cells_written": len(updates) if args.apply else 0,
         "skipped_invalid_ai": skipped_invalid_ai,
         "skipped_no_key": skipped_no_key,
         "skipped_no_fitment": skipped_no_fitment,
