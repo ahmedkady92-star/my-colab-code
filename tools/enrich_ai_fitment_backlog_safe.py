@@ -2,8 +2,8 @@
 """Safer wrapper for the AI fitment backlog.
 
 This keeps the existing enrichment logic intact while tightening candidate
-selection and allowing controlled retries for explicitly selected unresolved
-Porsche rows.
+selection and enforcing a bounded retry limit for every unresolved row.
+No row is allowed to bypass the retry ceiling, preventing queue starvation.
 """
 import re
 import sys
@@ -58,7 +58,7 @@ def first_part(value):
 
 
 def audit_done(rows):
-    """Keep normal two-attempt ceiling, but reopen only selected Porsche IDs."""
+    """Stop every unresolved AI row after the bounded automatic attempt limit."""
     counts = {}
     for _, row in rows:
         if str(row.get("Source_System", "")).strip().upper() != base.AUDIT_SOURCE:
@@ -67,15 +67,7 @@ def audit_done(rows):
         if rid:
             counts[rid] = counts.get(rid, 0) + 1
 
-    done = set()
-    for rid, count in counts.items():
-        # Explicit test rows are allowed through candidate selection regardless
-        # of their old audit count. Once fitment is found, fit_keys skips them.
-        if rid in EXTRA_RETRY_IDS:
-            continue
-        if count >= MAX_AUTO_ATTEMPTS:
-            done.add(rid)
-    return done
+    return {rid for rid, count in counts.items() if count >= MAX_AUTO_ATTEMPTS}
 
 
 # Patch only candidate parsing/retry policy. All Cars245 research, scoring,
