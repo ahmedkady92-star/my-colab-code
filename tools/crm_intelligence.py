@@ -60,6 +60,12 @@ def normalize_text(value):
     return re.sub(r"\s+", " ", text).strip()
 
 
+def unusable_description(value):
+    text = normalize_text(value)
+    placeholders = {"طلب بدون وصف قطعه", "بدون وصف قطعه", "غير محدد", "غير معروف", "unknown", "n a", "na"}
+    return not text or text in placeholders
+
+
 def stable_id(prefix, *parts):
     raw = "|".join(str(x or "") for x in parts)
     return f"{prefix}-{hashlib.sha1(raw.encode('utf-8')).hexdigest()[:12].upper()}"
@@ -291,6 +297,9 @@ def build_intelligence(data, today=None):
             seen_request_ids.add(rid)
         exact_key = norm(r.get("OEM_Reference_Number") or r.get("Part_Number"))
         description_key = normalize_text(r.get("Requested_Part"))
+        if not exact_key and unusable_description(r.get("Requested_Part")):
+            quality.append(issue("Part Request", rid, "Requested_Part", "Unusable request description", "Medium", r.get("Requested_Part", ""), "Add part name and Part Number/VIN when available", "08_Part_Requests", today, "Excluded from demand score; source row preserved"))
+            continue
         key = exact_key or (stable_id("TXT", description_key) if len(description_key) >= 4 else "")
         if not key:
             continue
@@ -343,7 +352,7 @@ def build_intelligence(data, today=None):
                 stock["reserved"] += inventory_by_product[mapped_pid]["reserved"]
         if (len(recent90) >= 3 and len(dates90) >= 2 and stock["available"] <= 0) or confirmed90 > stock["available"]:
             demand_class = "Purchase Priority"
-        elif len(recent90) >= 5 or sold90 >= 3:
+        elif (len(recent90) >= 5 or sold90 >= 3) and len(dates90) >= 2:
             demand_class = "High Demand"
         elif (len(recent90) >= 3 or qty90 >= 3) and len(dates90) >= 2:
             demand_class = "Important"
