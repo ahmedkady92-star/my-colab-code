@@ -192,14 +192,16 @@ def main():
         if not changed:
             continue
 
-        row_values = [ai.get(h, "") for h in h41]
         for k, v in changes.items():
             if k in header_pos:
-                row_values[header_pos[k]] = v
-        updates.append({
-            "range": f"'41_AI_Product_Feed'!A{rn}:{col_letter(len(h41))}{rn}",
-            "values": [row_values],
-        })
+                # Write only the derived fitment field. Replacing the whole AI
+                # feed row would flatten formulas and could overwrite pricing,
+                # stock or owner-approved values unrelated to compatibility.
+                col = col_letter(header_pos[k] + 1)
+                updates.append({
+                    "range": f"'41_AI_Product_Feed'!{col}{rn}",
+                    "values": [[v]],
+                })
 
     if args.apply and updates:
         svc.spreadsheets().values().batchUpdate(
@@ -213,8 +215,8 @@ def main():
         "ai_rows_scanned": len(ai_rows),
         "fitment_rows_scanned": len(fitments),
         "matched_ai_rows": len(report_rows),
-        "rows_needing_update": len(updates),
-        "rows_written": len(updates) if args.apply else 0,
+        "cells_needing_update": len(updates),
+        "cells_written": len(updates) if args.apply else 0,
         "skipped_invalid_ai": skipped_invalid_ai,
         "skipped_no_key": skipped_no_key,
         "skipped_no_fitment": skipped_no_fitment,
