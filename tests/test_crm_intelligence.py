@@ -17,6 +17,8 @@ def fixture():
             {"Request_ID":"R1","Customer_ID":"C1","Date_Created":"2026-08-01","Requested_Part":"Front pads","OEM_Reference_Number":"5Q0 698 151 F","Quantity":1,"Customer_Intent":"Purchase Planned"},
             {"Request_ID":"R2","Customer_ID":"C2","Date_Created":"2026-08-20","Requested_Part":"Front pads","OEM_Reference_Number":"5Q0 698 151 F","Quantity":1,"Customer_Intent":"Confirmed"},
             {"Request_ID":"R3","Customer_ID":"C3","Date_Created":"2026-09-01","Requested_Part":"Front pads","OEM_Reference_Number":"5Q0 698 151 F","Quantity":1,"Request_Status":"Sold"},
+            {"Request_ID":"R4","Customer_ID":"C4","Date_Created":"2026-08-05","Requested_Part":"طرمبة مياه اودي A4","Quantity":1,"Customer_Intent":"Price Inquiry"},
+            {"Request_ID":"R5","Customer_ID":"C5","Date_Created":"2026-09-05","Requested_Part":"طرمبه مياه اودي A4","Quantity":1,"Customer_Intent":"Purchase Planned"},
         ],
         "offers": [
             {"Supplier_Offer_ID":"OFF-1","Product_ID":"","OEM_Number":"5Q0 698 151 F","Supplier_Name":"KANO","Supplier_Cost":2000,"Currency":"EGP","Verified_Status":"Confirmed"},
@@ -44,3 +46,11 @@ def test_repeated_dates_create_purchase_priority_without_stock():
 def test_offer_history_is_flagged_not_deleted():
     out = build_intelligence(fixture(), date(2026, 9, 13))
     assert any(x["Entity_Type"] == "Supplier Offer" and x["Issue_Type"] == "Missing sellable Product_ID" for x in out["quality"])
+
+
+def test_text_only_requests_are_counted_but_never_auto_ordered():
+    out = build_intelligence(fixture(), date(2026, 9, 13))
+    row = next(x for x in out["demand"] if x["Demand_Key"].startswith("TXT-"))
+    assert row["Request_Count_90D"] == 2
+    assert row["Demand_Class"] == "Monitor"
+    assert row["Match_Status"] == "Review Required"
