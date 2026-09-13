@@ -1,0 +1,42 @@
+name: Apply Verified AI Fitment Links Once
+
+on:
+  push:
+    branches:
+      - ai-fitment-linkage-fix
+    paths:
+      - .github/workflows/apply-verified-ai-fitment-once.yml
+
+permissions:
+  contents: read
+  id-token: write
+
+jobs:
+  apply:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+      - uses: google-github-actions/auth@v2
+        with:
+          workload_identity_provider: projects/127233897104/locations/global/workloadIdentityPools/elkady-github-actions/providers/github
+          service_account: elkady-crm-automation@elkadyauto-login.iam.gserviceaccount.com
+          create_credentials_file: true
+          export_environment_variables: true
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+      - run: pip install -r requirements.txt pytest
+      - name: Verify linkage tests
+        env:
+          PYTHONPATH: .
+        run: pytest -q tests/test_ai_fitment_linkage.py
+      - name: Apply verified fitment summaries only
+        env:
+          ELKADY_SPREADSHEET_ID: 1A-8YoZkVIdelh2x3i7DmeFCERLeR1XREyEpK3Wrk6B0
+        run: python tools/backfill_fitment_summary_to_ai_feed.py --apply --report automation_output/verified_fitment_apply.json
+      - uses: actions/upload-artifact@v4
+        with:
+          name: verified-ai-fitment-apply-${{ github.run_id }}
+          path: automation_output/
+          retention-days: 14
