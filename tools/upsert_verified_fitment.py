@@ -27,7 +27,7 @@ def svc():
 
 def read_table(s, tab, end_col):
     vals = s.spreadsheets().values().get(
-        spreadsheetId=SPREADSHEET_ID, range=f"'{tab}'!A1:{end_col}5000"
+        spreadsheetId=SPREADSHEET_ID, range=f"'{tab}'!A1:{end_col}"
     ).execute(num_retries=5).get("values", [])
     if not vals:
         raise RuntimeError(f"Empty sheet {tab}")
