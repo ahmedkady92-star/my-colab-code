@@ -24,11 +24,26 @@ def valid_part(v):
 
 
 def first_part(value):
-    for token in re.split(r"[;|,\n]+", str(value or "")):
+    parts = all_parts(value)
+    return parts[0] if parts else ""
+
+
+def all_parts(value):
+    """Return every plausible part/OEM token without joining alternatives.
+
+    AI feed cells often contain semicolon- or slash-separated supersessions.
+    Treating the whole cell as one key made existing fitments look missing and
+    repeatedly sent the same row back to Cars245 research.
+    """
+    out = []
+    seen = set()
+    for token in re.split(r"[;|,/\n]+", str(value or "")):
         token = token.strip()
-        if valid_part(token):
-            return token
-    return ""
+        key = norm(token)
+        if valid_part(token) and key not in seen:
+            seen.add(key)
+            out.append(token)
+    return out
 
 
 def move_front(order, keys):
@@ -79,7 +94,7 @@ def run_research(row, target, catalog, out_dir):
     input_path.write_text(json.dumps(offer, ensure_ascii=False, indent=2), encoding="utf-8")
     subprocess.run(
         [sys.executable, "supplier_automation.py", "--input", str(input_path), "--output-dir", str(out_dir)],
-        check=True, stdout=subprocess.DEVNULL, stderr=subprocess.PIPE, text=True, timeout=150,
+        check=True, stdout=subprocess.DEVNULL, stderr=subprocess.PIPE, text=True, timeout=90,
     )
     return json.loads((out_dir / "import_payload.json").read_text(encoding="utf-8"))
 
@@ -270,14 +285,25 @@ def main():
         ai_id = str(row.get("AI_Feed_ID", "")).strip()
         if not ai_id.startswith("AI-"):
             invalid += 1; continue
-        target = first_part(row.get("OEM_Number")) or first_part(row.get("Part_Number"))
-        if not target:
+        targets = all_parts(row.get("OEM_Number")) + all_parts(row.get("Part_Number"))
+        unique_targets = []
+        seen_target_keys = set()
+        for candidate in targets:
+            key = norm(candidate)
+            if key and key not in seen_target_keys:
+                seen_target_keys.add(key)
+                unique_targets.append(candidate)
+        if not unique_targets:
             invalid += 1; continue
-        target_key = norm(target)
-        if target_key in fit_keys:
+        # A row is already covered when *any* OEM/MPN alternative has fitment.
+        # The old first-token-only check caused unnecessary repeat research.
+        if any(norm(candidate) in fit_keys for candidate in unique_targets):
             already_fit += 1; continue
-        if ai_id in done or target_key in done_targets:
+        remaining_targets = [candidate for candidate in unique_targets if norm(candidate) not in done_targets]
+        if ai_id in done or not remaining_targets:
             already_attempted += 1; continue
+        target = remaining_targets[0]
+        target_key = norm(target)
         if target_key in queued_targets:
             duplicate_target_rows += 1; continue
         queued_targets.add(target_key)
