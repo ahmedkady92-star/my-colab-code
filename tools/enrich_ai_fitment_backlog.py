@@ -121,6 +121,18 @@ def audit_done(rows):
     return done
 
 
+def audit_done_targets(rows, max_attempts=2):
+    """Share the retry ceiling across AI rows that use the same OEM/part number."""
+    counts = {}
+    for _, r in rows:
+        if str(r.get("Source_System", "")).strip().upper() != AUDIT_SOURCE:
+            continue
+        key = norm(r.get("Match_Key") or r.get("Destination_Record_ID"))
+        if key:
+            counts[key] = counts.get(key, 0) + 1
+    return {key for key, count in counts.items() if count >= max_attempts}
+
+
 def product_id_for_target(id_rows, target):
     t = norm(target)
     for _, r in id_rows:
@@ -246,11 +258,14 @@ def main():
     h43, r43 = read_table(s, "43_Sync_Audit", "V")
     fit_keys = existing_fitment_keys(r39)
     done = set() if args.retry_audited else audit_done(r43)
+    done_targets = set() if args.retry_audited else audit_done_targets(r43)
 
     backlog = []
+    queued_targets = set()
     invalid = 0
     already_fit = 0
     already_attempted = 0
+    duplicate_target_rows = 0
     for rn, row in r41:
         ai_id = str(row.get("AI_Feed_ID", "")).strip()
         if not ai_id.startswith("AI-"):
@@ -258,16 +273,21 @@ def main():
         target = first_part(row.get("OEM_Number")) or first_part(row.get("Part_Number"))
         if not target:
             invalid += 1; continue
-        if norm(target) in fit_keys:
+        target_key = norm(target)
+        if target_key in fit_keys:
             already_fit += 1; continue
-        if ai_id in done:
+        if ai_id in done or target_key in done_targets:
             already_attempted += 1; continue
+        if target_key in queued_targets:
+            duplicate_target_rows += 1; continue
+        queued_targets.add(target_key)
         backlog.append((rn, row, ai_id, target))
 
     summary = {
         "mode": "SCAN_ONLY" if args.scan_only else "APPLY",
         "ai_rows": len(r41), "fitment_rows": len(r39), "backlog_remaining": len(backlog),
-        "already_has_fitment": already_fit, "already_attempted": already_attempted, "invalid_or_no_key": invalid,
+        "already_has_fitment": already_fit, "already_attempted": already_attempted,
+        "duplicate_target_rows": duplicate_target_rows, "invalid_or_no_key": invalid,
         "processed": []
     }
     if args.scan_only:
