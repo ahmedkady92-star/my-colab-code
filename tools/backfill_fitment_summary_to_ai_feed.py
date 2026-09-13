@@ -78,8 +78,10 @@ def summarize(rows):
         status = str(row.get("Fitment_Status", "")).strip()
         if make and make not in makes:
             makes.append(make)
-        if code and code not in engines:
-            engines.append(code)
+        for one_code in re.split(r"[;,|/]+", code):
+            one_code = one_code.strip()
+            if one_code and one_code not in engines:
+                engines.append(one_code)
         if yf: all_years.append(yf)
         if yt: all_years.append(yt)
         if status: statuses.add(status)
@@ -94,7 +96,11 @@ def summarize(rows):
             continue
         start = min(yrs["from"]) if yrs["from"] else None
         end = max(yrs["to"]) if yrs["to"] else None
-        name = " ".join(x for x in (make, model, gen) if x)
+        # Some imported model labels already contain the generation. Avoid
+        # output such as "A4 B9 (...) B9 (...)" in customer-facing summaries.
+        model_norm = norm(model)
+        gen_for_name = "" if gen and norm(gen) in model_norm else gen
+        name = " ".join(x for x in (make, model, gen_for_name) if x)
         if start and end:
             name += f" {start}-{end}"
         summaries.append(name)
