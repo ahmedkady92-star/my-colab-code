@@ -1,0 +1,49 @@
+name: CRM Intelligence Dry Run
+
+on:
+  workflow_dispatch:
+  push:
+    branches:
+      - crm-intelligence-v1
+    paths:
+      - tools/crm_intelligence.py
+      - tests/test_crm_intelligence.py
+      - .github/workflows/crm-intelligence-dry-run.yml
+
+permissions:
+  contents: read
+  id-token: write
+
+concurrency:
+  group: crm-intelligence-dry-run
+  cancel-in-progress: false
+
+jobs:
+  validate-and-analyse:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+      - uses: google-github-actions/auth@v2
+        with:
+          workload_identity_provider: projects/127233897104/locations/global/workloadIdentityPools/elkady-github-actions/providers/github
+          service_account: elkady-crm-automation@elkadyauto-login.iam.gserviceaccount.com
+          create_credentials_file: true
+          export_environment_variables: true
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+      - name: Install dependencies
+        run: pip install pytest google-api-python-client google-auth
+      - name: Unit tests
+        run: pytest -q tests/test_crm_intelligence.py
+      - name: Read-only CRM analysis
+        env:
+          ELKADY_SPREADSHEET_ID: 1A-8YoZkVIdelh2x3i7DmeFCERLeR1XREyEpK3Wrk6B0
+        run: python tools/crm_intelligence.py --dry-run --output-dir crm_intelligence_output
+      - name: Upload review sample
+        uses: actions/upload-artifact@v4
+        with:
+          name: crm-intelligence-dry-run-${{ github.run_id }}
+          path: crm_intelligence_output/
+          retention-days: 14
