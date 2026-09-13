@@ -28,3 +28,19 @@ def test_enrichment_considers_all_oem_alternatives():
         "4M0 199 372 D",
         "4M0 199 372 FG",
     ]
+
+
+def test_summary_deduplicates_generation_and_engine_codes():
+    result = backfill.summarize([
+        {
+            "Vehicle_Make": "AUDI",
+            "Vehicle_Model": "A4 B9 (8W2, 8WC)",
+            "Generation": "B9 (8W2, 8WC)",
+            "Year_From": "2016",
+            "Year_To": "2024",
+            "Engine_Code": "CYRB; CYRC; CYRB",
+            "Fitment_Status": "Compatible - conditional",
+        }
+    ])
+    assert "B9 (8W2, 8WC) B9 (8W2, 8WC)" not in result["Vehicle_Model"]
+    assert result["Engine"].count("CYRB") == 1
