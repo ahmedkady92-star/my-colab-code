@@ -36,6 +36,8 @@ jobs:
       - name: Install dependencies
         run: pip install pytest google-api-python-client google-auth
       - name: Unit tests
+        env:
+          PYTHONPATH: .
         run: pytest -q tests/test_crm_intelligence.py
       - name: Read-only CRM analysis
         env:
