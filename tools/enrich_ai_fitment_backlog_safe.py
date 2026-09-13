@@ -19,16 +19,6 @@ if str(ROOT) not in sys.path:
 from tools import enrich_ai_fitment_backlog as base
 
 MAX_AUTO_ATTEMPTS = 2
-# Controlled extra attempt for these five unresolved Porsche AI feed rows only.
-# audit_done() intentionally excludes these IDs from the done set; successful
-# rows remain protected by the base script's existing fitment-key check.
-EXTRA_RETRY_IDS = {
-    "AI-KANO-0178",      # PAB 199 371 10
-    "AI-KANO-0185",      # 991 572 371 00
-    "AI-KANO-0190",      # 9P1 411 318 A
-    "AI-KANO-CHAT-0002", # 7PP 199 331 A
-    "AI-KANO-MAN-0008",  # PAB 819 439 00
-}
 SUPPLIER_CODE_RE = re.compile(r"^\d{3}[A-Z]{2}$", re.I)
 SUPPLIER_PREFIX_WITH_OEM_RE = re.compile(r"^\s*\d{3}[A-Z]{2}\s+(.+?)\s*$", re.I)
 
