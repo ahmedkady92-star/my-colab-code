@@ -1,6 +1,6 @@
 from datetime import date
 
-from tools.crm_intelligence import build_intelligence
+from tools.crm_intelligence import build_intelligence, preserve_manual_fields
 
 
 def fixture():
@@ -62,3 +62,12 @@ def test_placeholder_requests_do_not_create_false_demand():
     out = build_intelligence(data, date(2026, 9, 13))
     assert not any(x["Part_Description"] == "طلب بدون وصف قطعة" for x in out["demand"])
     assert any(x["Issue_Type"] == "Unusable request description" for x in out["quality"])
+
+
+def test_manual_owner_decision_survives_refresh():
+    current = [{"Recommendation_ID":"REC-1","Decision_Status":"Approved","Owner_Approval":"Ahmed","Notes":"buy 2"}]
+    generated = [{"Recommendation_ID":"REC-1","Decision_Status":"Review","Owner_Approval":"Pending Review","Notes":"generated"}]
+    result = preserve_manual_fields(current, generated, "Recommendation_ID", ["Decision_Status","Owner_Approval","Notes"])
+    assert result[0]["Decision_Status"] == "Approved"
+    assert result[0]["Owner_Approval"] == "Ahmed"
+    assert result[0]["Notes"] == "buy 2"
