@@ -26,7 +26,7 @@ def service():
 def read_table(svc, tab, end_col):
     values = svc.spreadsheets().values().get(
         spreadsheetId=SPREADSHEET_ID,
-        range=f"'{tab}'!A1:{end_col}5000",
+        range=f"'{tab}'!A1:{end_col}",
     ).execute().get("values", [])
     if not values:
         raise RuntimeError(f"Empty sheet: {tab}")
