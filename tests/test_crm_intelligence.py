@@ -54,3 +54,11 @@ def test_text_only_requests_are_counted_but_never_auto_ordered():
     assert row["Request_Count_90D"] == 2
     assert row["Demand_Class"] == "Monitor"
     assert row["Match_Status"] == "Review Required"
+
+
+def test_placeholder_requests_do_not_create_false_demand():
+    data = fixture()
+    data["requests"].append({"Request_ID":"R6","Customer_ID":"C6","Date_Created":"2026-09-06","Requested_Part":"طلب بدون وصف قطعة","Quantity":9})
+    out = build_intelligence(data, date(2026, 9, 13))
+    assert not any(x["Part_Description"] == "طلب بدون وصف قطعة" for x in out["demand"])
+    assert any(x["Issue_Type"] == "Unusable request description" for x in out["quality"])
