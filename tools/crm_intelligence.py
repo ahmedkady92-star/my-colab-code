@@ -101,6 +101,24 @@ def row_dicts(values):
     return [dict(zip(headers, row + [""] * (len(headers) - len(row)))) for row in values[1:] if any(str(x).strip() for x in row)]
 
 
+def col_letter(n):
+    out = ""
+    while n:
+        n, rem = divmod(n - 1, 26)
+        out = chr(65 + rem) + out
+    return out
+
+
+def preserve_manual_fields(current_rows, generated_rows, key_field, fields):
+    current = {str(r.get(key_field, "")): r for r in current_rows if str(r.get(key_field, ""))}
+    for row in generated_rows:
+        old = current.get(str(row.get(key_field, "")), {})
+        for field in fields:
+            if str(old.get(field, "")).strip():
+                row[field] = old[field]
+    return generated_rows
+
+
 def issue(entity_type, entity_id, field, kind, severity, current, candidate, source, today, note=""):
     return {
         "Issue_ID": stable_id("DQ", entity_type, entity_id, field, kind, current),
@@ -423,10 +441,34 @@ def read_sources(service):
 
 def write_outputs(service, outputs):
     # Only derived tabs are replaced. Source/history tabs are never changed.
+    preserve = {
+        "fitment_groups": ("Fitment_Group_ID", ["Group_Status", "Notes"]),
+        "product_map": ("Map_ID", ["Mapping_Status", "Notes"]),
+        "recommendations": ("Recommendation_ID", ["Decision_Status", "Owner_Approval", "Notes"]),
+        "quality": ("Issue_ID", ["Issue_Status", "Resolution_Notes"]),
+    }
+    for key, (id_field, fields) in preserve.items():
+        tab = OUTPUT_TABS[key]
+        last = col_letter(len(HEADERS[key]))
+        existing = service.spreadsheets().values().get(spreadsheetId=SPREADSHEET_ID, range=f"'{tab}'!A1:{last}").execute(num_retries=5).get("values", [])
+        preserve_manual_fields(row_dicts(existing), outputs[key], id_field, fields)
+
+    meta = service.spreadsheets().get(spreadsheetId=SPREADSHEET_ID, fields="sheets.properties").execute(num_retries=5)
+    props = {s["properties"]["title"]: s["properties"] for s in meta.get("sheets", [])}
+    resize = []
+    for key, tab in OUTPUT_TABS.items():
+        needed = len(outputs[key]) + 1
+        current = int(props[tab]["gridProperties"]["rowCount"])
+        if needed > current:
+            resize.append({"appendDimension": {"sheetId": props[tab]["sheetId"], "dimension": "ROWS", "length": needed - current}})
+    if resize:
+        service.spreadsheets().batchUpdate(spreadsheetId=SPREADSHEET_ID, body={"requests": resize}).execute(num_retries=5)
+
     body = {"valueInputOption": "RAW", "data": []}
     for key, tab in OUTPUT_TABS.items():
-        service.spreadsheets().values().clear(spreadsheetId=SPREADSHEET_ID, range=f"'{tab}'!A2:ZZ", body={}).execute(num_retries=5)
         headers = HEADERS[key]
+        last = col_letter(len(headers))
+        service.spreadsheets().values().clear(spreadsheetId=SPREADSHEET_ID, range=f"'{tab}'!A2:{last}", body={}).execute(num_retries=5)
         rows = [[r.get(h, "") for h in headers] for r in outputs[key]]
         if rows:
             body["data"].append({"range": f"'{tab}'!A2", "values": rows})
