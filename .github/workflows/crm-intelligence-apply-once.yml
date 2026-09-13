@@ -1,0 +1,48 @@
+name: CRM Intelligence Apply Once
+
+on:
+  push:
+    branches:
+      - crm-intelligence-v1
+    paths:
+      - .github/workflows/crm-intelligence-apply-once.yml
+
+permissions:
+  contents: read
+  id-token: write
+
+concurrency:
+  group: crm-intelligence-apply-once
+  cancel-in-progress: false
+
+jobs:
+  validate-and-apply:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+      - uses: google-github-actions/auth@v2
+        with:
+          workload_identity_provider: projects/127233897104/locations/global/workloadIdentityPools/elkady-github-actions/providers/github
+          service_account: elkady-crm-automation@elkadyauto-login.iam.gserviceaccount.com
+          create_credentials_file: true
+          export_environment_variables: true
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+      - name: Install dependencies
+        run: pip install pytest google-api-python-client google-auth
+      - name: Unit tests
+        env:
+          PYTHONPATH: .
+        run: pytest -q tests/test_crm_intelligence.py
+      - name: Populate derived CRM intelligence tabs once
+        env:
+          ELKADY_SPREADSHEET_ID: 1A-8YoZkVIdelh2x3i7DmeFCERLeR1XREyEpK3Wrk6B0
+        run: python tools/crm_intelligence.py --apply --output-dir crm_intelligence_apply_output
+      - name: Upload verification output
+        uses: actions/upload-artifact@v4
+        with:
+          name: crm-intelligence-apply-once-${{ github.run_id }}
+          path: crm_intelligence_apply_output/
+          retention-days: 14
