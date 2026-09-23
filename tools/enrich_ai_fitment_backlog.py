@@ -295,19 +295,42 @@ def main():
                 unique_targets.append(candidate)
         if not unique_targets:
             invalid += 1; continue
-        # A row is already covered when *any* OEM/MPN alternative has fitment.
-        # The old first-token-only check caused unnecessary repeat research.
-        if any(norm(candidate) in fit_keys for candidate in unique_targets):
-            already_fit += 1; continue
-        remaining_targets = [candidate for candidate in unique_targets if norm(candidate) not in done_targets]
+        # An OEM/reference and an alternative MPN are separate research keys.
+        # A row is complete only when no eligible key remains.  Having fitment for
+        # one key must never suppress research for the other key.
+        remaining_targets = [candidate for candidate in unique_targets
+                             if norm(candidate) not in fit_keys and norm(candidate) not in done_targets]
         if ai_id in done or not remaining_targets:
-            already_attempted += 1; continue
-        target = remaining_targets[0]
-        target_key = norm(target)
-        if target_key in queued_targets:
-            duplicate_target_rows += 1; continue
-        queued_targets.add(target_key)
-        backlog.append((rn, row, ai_id, target))
+            if not remaining_targets:
+                already_fit += 1
+            else:
+                already_attempted += 1
+            continue
+
+        # Search one original/OEM reference and one distinct alternative part
+        # number in the same cycle.  This preserves source separation and gives
+        # aftermarket/cross-reference numbers their own Cars245 evidence.
+        oem_keys = [candidate for candidate in all_parts(row.get("OEM_Number"))
+                    if norm(candidate) in {norm(x) for x in remaining_targets}]
+        alt_keys = [candidate for candidate in all_parts(row.get("Part_Number"))
+                    if norm(candidate) in {norm(x) for x in remaining_targets}
+                    and norm(candidate) not in {norm(x) for x in oem_keys}]
+        chosen_targets = []
+        if oem_keys:
+            chosen_targets.append(oem_keys[0])
+        if alt_keys:
+            chosen_targets.append(alt_keys[0])
+        if not chosen_targets:
+            # Fall back safely when the source populated only an unusual field.
+            chosen_targets.append(remaining_targets[0])
+
+        for target in chosen_targets:
+            target_key = norm(target)
+            if target_key in queued_targets:
+                duplicate_target_rows += 1
+                continue
+            queued_targets.add(target_key)
+            backlog.append((rn, row, ai_id, target))
 
     summary = {
         "mode": "SCAN_ONLY" if args.scan_only else "APPLY",
