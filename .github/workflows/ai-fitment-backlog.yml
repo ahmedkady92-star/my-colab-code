@@ -46,6 +46,11 @@ jobs:
         env:
           ELKADY_SPREADSHEET_ID: 1A-8YoZkVIdelh2x3i7DmeFCERLeR1XREyEpK3Wrk6B0
         run: python tools/backfill_fitment_summary_to_ai_feed.py --apply --report automation_output/ai_fitment_summary_refresh.json
+      - name: Sync refreshed fitment to WhatsApp Safe AI Feed
+        env:
+          ELKADY_SOURCE_SPREADSHEET_ID: 1A-8YoZkVIdelh2x3i7DmeFCERLeR1XREyEpK3Wrk6B0
+          ELKADY_SAFE_SPREADSHEET_ID: 1d3J25P1L6oBOMCb6O3_xdRXie-FV-qvRbWEBv53jgYs
+        run: python tools/sync_whatsapp_safe_kb.py --apply --report automation_output/whatsapp_safe_sync_after_fitment.json
       - uses: actions/upload-artifact@v4
         with:
           name: ai-fitment-backlog-report
