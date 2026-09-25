@@ -41,7 +41,7 @@ jobs:
       - name: Enrich original and alternative fitment references
         env:
           ELKADY_SPREADSHEET_ID: 1A-8YoZkVIdelh2x3i7DmeFCERLeR1XREyEpK3Wrk6B0
-        run: python tools/enrich_ai_fitment_backlog_safe.py --max-items 10 --max-brands 5
+        run: python tools/enrich_ai_fitment_backlog_safe.py --max-items 20 --max-brands 5
       - name: Propagate fitment summaries to all matching AI price/brand rows
         env:
           ELKADY_SPREADSHEET_ID: 1A-8YoZkVIdelh2x3i7DmeFCERLeR1XREyEpK3Wrk6B0
