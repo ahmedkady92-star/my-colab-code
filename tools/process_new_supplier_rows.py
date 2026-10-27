@@ -273,7 +273,6 @@ def main():
         subprocess.run([sys.executable, "tools/upsert_verified_fitment.py", "--payload", str(payload_path)], check=True)
         subprocess.run([sys.executable, "tools/sync_supplier_payload_to_sheets.py", "--payload", str(payload_path)], check=True)
         update_fields(s, "36_Supplier_Offers", rn, headers, {
-            "Normalized_Part_Number": norm(supplier_part),
             "Extraction_Status":"Automated",
             "Last_Checked_At": __import__("datetime").datetime.utcnow().strftime("%Y-%m-%d"),
             "Notes": (str(r.get("Notes", "")).strip() + f" | Auto trigger processed via Cars245 catalog={selected_brand}").strip(" |"),
