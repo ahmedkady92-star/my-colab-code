@@ -36,7 +36,7 @@ jobs:
       - name: Process audited KANO batch with source quarantine gates
         env:
           ELKADY_SPREADSHEET_ID: 1A-8YoZkVIdelh2x3i7DmeFCERLeR1XREyEpK3Wrk6B0
-        run: python tools/process_new_supplier_rows.py --baseline-row 2040 --max-candidates 40 --offer-prefix OFF-KANO-XMATCH-20261027
+        run: python tools/process_new_supplier_rows.py --baseline-row 2040 --max-candidates 40 --max-catalogs 1 --offer-prefix OFF-KANO-XMATCH-20261027
       - name: Relink processed rows to verified master Product_ID
         env:
           ELKADY_SPREADSHEET_ID: 1A-8YoZkVIdelh2x3i7DmeFCERLeR1XREyEpK3Wrk6B0
