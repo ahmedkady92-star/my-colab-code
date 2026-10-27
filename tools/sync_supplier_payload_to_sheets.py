@@ -73,32 +73,38 @@ def col_letter(n):
 def append_row(svc, tab, headers, data):
     last = col_letter(len(headers))
     row = [data.get(h, "") for h in headers]
-    svc.spreadsheets().values().append(
-        spreadsheetId=SPREADSHEET_ID,
-        range=f"'{tab}'!A:{last}",
-        valueInputOption="RAW",
-        insertDataOption="INSERT_ROWS",
-        body={"values": [row]},
+    # Explicit A-column placement prevents Sheets table detection from shifting
+    # sparse pricing rows into J:T instead of the declared A:K schema.
+    existing = svc.spreadsheets().values().get(
+        spreadsheetId=SPREADSHEET_ID, range=f"'{tab}'!A:{last}"
+    ).execute().get("values", [])
+    row_no = len(existing) + 1
+    meta = svc.spreadsheets().get(
+        spreadsheetId=SPREADSHEET_ID, fields="sheets.properties"
+    ).execute()
+    props = next(x["properties"] for x in meta["sheets"] if x["properties"]["title"] == tab)
+    if row_no > props["gridProperties"]["rowCount"]:
+        svc.spreadsheets().batchUpdate(
+            spreadsheetId=SPREADSHEET_ID,
+            body={"requests": [{"appendDimension": {"sheetId": props["sheetId"], "dimension": "ROWS", "length": row_no - props["gridProperties"]["rowCount"]}}]}
+        ).execute()
+    svc.spreadsheets().values().update(
+        spreadsheetId=SPREADSHEET_ID, range=f"'{tab}'!A{row_no}:{last}{row_no}",
+        valueInputOption="RAW", body={"values": [row]}
     ).execute()
 
 
 def update_row(svc, tab, row_no, headers, data):
-    last = col_letter(len(headers))
-    current = svc.spreadsheets().values().get(
-        spreadsheetId=SPREADSHEET_ID,
-        range=f"'{tab}'!A{row_no}:{last}{row_no}",
-    ).execute().get("values", [[]])[0]
-    current = current + [""] * (len(headers) - len(current))
     pos = {h: i for i, h in enumerate(headers)}
-    for k, v in data.items():
-        if k in pos:
-            current[pos[k]] = v
-    svc.spreadsheets().values().update(
-        spreadsheetId=SPREADSHEET_ID,
-        range=f"'{tab}'!A{row_no}:{last}{row_no}",
-        valueInputOption="RAW",
-        body={"values": [current[:len(headers)]]},
-    ).execute()
+    changes = [
+        {"range": f"'{tab}'!{col_letter(pos[k]+1)}{row_no}", "values": [[v]]}
+        for k, v in data.items() if k in pos
+    ]
+    if changes:
+        svc.spreadsheets().values().batchUpdate(
+            spreadsheetId=SPREADSHEET_ID,
+            body={"valueInputOption": "RAW", "data": changes}
+        ).execute()
 
 
 def main():
@@ -143,13 +149,18 @@ def main():
         and num(r.get("Supplier_Cost")) == cost
     ), None)
 
+    source_quote_approved = False
     if exact_offer:
         offer_row, existing_offer = exact_offer
+        source_quote_approved = (
+            str(existing_offer.get("Verified_Status", "")).strip() == "Confirmed"
+            and "SOURCE_QUARANTINED" not in str(existing_offer.get("Notes", "")).upper()
+        )
         offer_id = existing_offer.get("Supplier_Offer_ID") or stable_id("OFF-AUTO", supplier, n_part, brand, cost)
         merged_oems = merge_semicolon_values(existing_offer.get("OEM_Number", ""), oem, cars.get("oem_refs", []))
         update_row(svc, "36_Supplier_Offers", offer_row, h36, {
             "OEM_Number": merged_oems,
-            "Verified_Status": base_verified_status,
+            "Verified_Status": "Confirmed" if source_quote_approved else "Review Required",
             "Last_Checked_At": today,
             "Review_Reason": review_reason,
             "Product_Match_Status": "Matched by exact supplier/part/brand/cost" if base_ai_eligible else "Review Required",
@@ -251,9 +262,12 @@ def main():
                 if master_product_id:
                     break
 
-    effective_ai = bool(base_ai_eligible and master_product_id)
+    effective_ai = bool(base_ai_eligible and master_product_id and source_quote_approved)
     effective_status = "Verified - VIN/PR Required" if effective_ai else "Review Required"
-    effective_reason = "" if effective_ai else (review_reason or "No existing verified OEM Product_ID in 38_Product_Identifiers")
+    effective_reason = "" if effective_ai else (
+        "Supplier quote requires owner/source approval before customer display" if not source_quote_approved
+        else (review_reason or "No existing verified OEM Product_ID in 38_Product_Identifiers")
+    )
 
     # 41 AI feed: preserve existing fitment/model fields and historical OEM aliases on update.
     h41, r41 = read_table(svc, "41_AI_Product_Feed", "X")
@@ -338,3 +352,4 @@ def main():
 
 if __name__ == "__main__":
     main()
+
