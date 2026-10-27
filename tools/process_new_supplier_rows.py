@@ -132,9 +132,12 @@ def main():
     ap.add_argument("--baseline-row", type=int, default=DEFAULT_BASELINE_ROW)
     ap.add_argument("--max-candidates", type=int, default=2)
     ap.add_argument("--scan-only", action="store_true")
+    ap.add_argument("--reprocess", action="store_true", help="Retry a corrected source description; requires an explicit offer prefix")
     ap.add_argument("--max-catalogs", type=int, default=12, help="Bound known-catalog batches without changing scheduled fallback behavior")
     ap.add_argument("--offer-prefix", default="", help="Restrict a repair batch to an explicit offer ID prefix")
     args = ap.parse_args()
+    if args.reprocess and not args.offer_prefix:
+        ap.error("--reprocess requires --offer-prefix")
 
     s = service()
     vals, max_row = table(s, "36_Supplier_Offers", 1, None, "Z")
@@ -184,7 +187,7 @@ def main():
             continue
         if brand.upper() in {"BRAND NOT STATED", "UNKNOWN", "غير مذكور", "خيار 1", "خيار 2"}:
             continue
-        if offer_id in processed:
+        if offer_id in processed and not args.reprocess:
             continue
         if not (supplier and brand and cost > 0 and valid_part(oem)):
             continue
