@@ -1,0 +1,58 @@
+name: KANO Audit Completion
+
+on:
+  push:
+    branches: [main]
+    paths: [.github/workflows/kano-audit-completion.yml]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  id-token: write
+
+concurrency:
+  group: supplier-sheet-auto-trigger
+  cancel-in-progress: false
+
+jobs:
+  complete-kano:
+    runs-on: ubuntu-latest
+    timeout-minutes: 360
+    steps:
+      - uses: actions/checkout@v4
+      - name: Authenticate to Google Cloud via Workload Identity Federation
+        uses: google-github-actions/auth@v2
+        with:
+          workload_identity_provider: projects/127233897104/locations/global/workloadIdentityPools/elkady-github-actions/providers/github
+          service_account: elkady-crm-automation@elkadyauto-login.iam.gserviceaccount.com
+          create_credentials_file: true
+          export_environment_variables: true
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+      - name: Install dependencies
+        run: pip install pandas requests beautifulsoup4 google-api-python-client google-auth
+      - name: Process audited KANO batch with source quarantine gates
+        env:
+          ELKADY_SPREADSHEET_ID: 1A-8YoZkVIdelh2x3i7DmeFCERLeR1XREyEpK3Wrk6B0
+        run: python tools/process_new_supplier_rows.py --baseline-row 2040 --max-candidates 40 --offer-prefix OFF-KANO-XMATCH-20261027
+      - name: Relink processed rows to verified master Product_ID
+        env:
+          ELKADY_SPREADSHEET_ID: 1A-8YoZkVIdelh2x3i7DmeFCERLeR1XREyEpK3Wrk6B0
+        shell: bash
+        run: |
+          if [ -d supplier_sheet_trigger_output ]; then
+            while IFS= read -r -d '' payload; do
+              python tools/relink_supplier_master_product.py --payload "$payload"
+            done < <(find supplier_sheet_trigger_output -name import_payload.json -print0)
+          fi
+      - name: Persist batch evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: kano-audit-completion-${{ github.run_id }}
+          path: |
+            supplier_sheet_trigger_summary.json
+            supplier_sheet_trigger_output/
+          if-no-files-found: ignore
+          retention-days: 7
