@@ -182,7 +182,7 @@ def main():
             "Supplier_Cost": cost,
             "Currency": currency,
             "Availability": "Waiting Supplier Confirmation",
-            "Offer_Date": today,
+            "Offer_Date": "",
             "Extraction_Confidence": "High",
             "Extraction_Status": "Automated",
             "Product_Match_Status": "Exact OEM Cars245 verified" if base_ai_eligible else "Review Required",
@@ -194,6 +194,9 @@ def main():
         })
         offer_created, offer_updated = 1, 0
 
+    # A processing date must never be presented as the date the supplier quoted.
+    quote_date = str(existing_offer.get("Offer_Date", "")).strip() if exact_offer else ""
+    quote_time = str(existing_offer.get("Offer_Time", "")).strip() if exact_offer else ""
     # 37 historical supplier prices: append once per supplier/part/brand/cost/date.
     h37, r37 = read_table(svc, "37_Supplier_Price_History", "V")
     history_exists = any(
@@ -201,7 +204,7 @@ def main():
         and norm(r.get("Original_Part_Number")) == n_part
         and str(r.get("Brand", "")).upper().strip() == brand.upper()
         and num(r.get("Supplier_Cost")) == cost
-        and str(r.get("Price_Date", "")) == today
+        and str(r.get("Price_Date", "")) == quote_date
         for _, r in r37
     )
     history_created = 0
@@ -219,15 +222,15 @@ def main():
             "Part_Description": description,
             "Supplier_Cost": cost,
             "Currency": currency,
-            "Price_Date": today,
-            "Price_Time": time_s,
+            "Price_Date": quote_date,
+            "Price_Time": quote_time,
             "Extraction_Confidence": "High",
             "Extraction_Status": "Automated",
             "Internal_Only": "TRUE",
             "Verified_Status": base_verified_status,
             "Last_Checked_At": today,
             "Review_Reason": review_reason,
-            "Notes": "Direct GitHub Actions -> Google Sheets via WIF",
+            "Notes": "Direct GitHub Actions -> Google Sheets via WIF; supplier quote date preserved; processing timestamp is Last_Checked_At",
         })
 
     # 13 Pricing: current customer price. History remains in 37.
