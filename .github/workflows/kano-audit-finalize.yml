@@ -47,7 +47,7 @@ jobs:
           ELKADY_SPREADSHEET_ID: 1A-8YoZkVIdelh2x3i7DmeFCERLeR1XREyEpK3Wrk6B0
         shell: bash
         run: |
-          for prefix in OFF-KANO-XMATCH-20261027-C029 OFF-KANO-XMATCH-20261027-C030; do
+          for prefix in OFF-KANO-XMATCH-20261027-C029 OFF-KANO-XMATCH-20261027-C030 OFF-KANO-XMATCH-20261027-RAW-NISSENS; do
             python tools/process_new_supplier_rows.py --baseline-row 2040 --max-candidates 1 --max-catalogs 1 --offer-prefix "$prefix" --reprocess
             if [ -d supplier_sheet_trigger_output ]; then
               while IFS= read -r -d '' payload; do
