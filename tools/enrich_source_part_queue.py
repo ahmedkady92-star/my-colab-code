@@ -55,7 +55,8 @@ def main():
             # its admitted reference first without pretending it is an OEM.
             if not any(norm(r.get('Original_Value'))==norm(target) or norm(r.get('Normalized_Value'))==norm(target) for _,r in r38):
                 admitted={'Identifier_ID':stable_id('ID-SRC-QUEUE',norm(target)),'Product_ID':pid,'Identifier_Type':'Source Part Reference','Original_Value':target,'Normalized_Value':norm(target),'Brand':row.get('Brand_Hint',''),'Source_Type':'Admitted source research queue','Source_Record_ID':row.get('Source_Record_ID',''),'Source_File':row.get('Source_File',''),'Source_Message_ID':row.get('Source_Record_ID',''),'Verified_Status':'Review Required','Extraction_Confidence':'Medium','Is_Primary':'TRUE','Last_Checked_At':today,'Notes':'Source identity admitted via queue; technical evidence and manufacturer mapping reviewed separately'}
-                append_row(s,'38_Product_Identifiers',h38,admitted,False);r38.append((0,admitted))
+                append_row(s,'38_Product_Identifiers',h38,admitted,False)
+                h38,r38=read_table(s,'38_Product_Identifiers','Q')
             write_identifier(s,h38,r38,pid,target,cat,mode,today)
             created=write_fitments(s,h39,r39,pid,target,mode,raw,today)
             for rawrow in raw:
