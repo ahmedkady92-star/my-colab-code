@@ -17,7 +17,7 @@ permissions:
   id-token: write
 
 concurrency:
-  group: whatsapp-safe-knowledge-sync
+  group: supplier-sheet-auto-trigger
   cancel-in-progress: false
 
 jobs:
