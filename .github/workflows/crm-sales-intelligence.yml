@@ -17,7 +17,7 @@ permissions:
   id-token: write
 
 concurrency:
-  group: crm-sales-intelligence-production
+  group: supplier-sheet-auto-trigger
   cancel-in-progress: false
 
 jobs:
