@@ -52,12 +52,22 @@ def append_rows(s, tab, headers, rows, dry):
         return
     last = col_letter(len(headers))
     values = [[data.get(h, "") for h in headers] for data in rows]
-    s.spreadsheets().values().append(
-        spreadsheetId=SPREADSHEET_ID,
-        range=f"'{tab}'!A:{last}",
-        valueInputOption="RAW",
-        insertDataOption="INSERT_ROWS",
-        body={"values": values},
+    existing = s.spreadsheets().values().get(
+        spreadsheetId=SPREADSHEET_ID, range=f"'{tab}'!A:{last}"
+    ).execute(num_retries=5).get("values", [])
+    start = len(existing) + 1
+    end = start + len(values) - 1
+    meta = s.spreadsheets().get(
+        spreadsheetId=SPREADSHEET_ID, fields="sheets.properties"
+    ).execute(num_retries=5)
+    props = next(x["properties"] for x in meta["sheets"] if x["properties"]["title"] == tab)
+    if end > props["gridProperties"]["rowCount"]:
+        s.spreadsheets().batchUpdate(spreadsheetId=SPREADSHEET_ID, body={"requests": [
+            {"appendDimension": {"sheetId": props["sheetId"], "dimension": "ROWS", "length": end - props["gridProperties"]["rowCount"]}}
+        ]}).execute(num_retries=5)
+    s.spreadsheets().values().update(
+        spreadsheetId=SPREADSHEET_ID, range=f"'{tab}'!A{start}:{last}{end}",
+        valueInputOption="RAW", body={"values": values}
     ).execute(num_retries=5)
 
 
@@ -114,7 +124,7 @@ def parse_fitment(row):
     make = str(row.get("vehicle_make", "")).strip().upper()
     base, _, notes = text.partition(" | Important notes:")
     base = base.strip()
-    rest = base
+    rest = re.sub(r"\s*\|\s*", " ", base).strip()
     if make and rest.upper().startswith(make + " "):
         rest = rest[len(make):].strip()
 
@@ -130,9 +140,11 @@ def parse_fitment(row):
     m = pat.match(rest)
     if not m:
         fallback_model = rest[:140]
+        years = re.search(r"(\d{4})-(\d{4}|now|current)\s*$", rest, re.I)
         return {
             "make": make, "model": fallback_model, "generation": "", "engine_code": "", "fuel": "", "engine": "",
-            "year_from": row.get("year_from", ""), "year_to": row.get("year_to", ""), "pr": "", "notes": text,
+            "year_from": years.group(1) if years else row.get("year_from", ""),
+            "year_to": years.group(2).lower().replace("current", "now") if years else row.get("year_to", ""), "pr": "", "notes": text,
         }
 
     prefix = m.group("prefix").strip()
@@ -323,3 +335,4 @@ def main():
 
 if __name__ == "__main__":
     main()
+
