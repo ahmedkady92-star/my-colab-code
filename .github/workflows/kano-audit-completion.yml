@@ -13,7 +13,7 @@ permissions:
 
 concurrency:
   group: supplier-sheet-auto-trigger
-  cancel-in-progress: false
+  cancel-in-progress: true
 
 jobs:
   complete-kano:
