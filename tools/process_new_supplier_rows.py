@@ -79,6 +79,8 @@ def brand_priority(text):
         if token in t and key not in out:
             out.append(key)
     compact = norm(text)
+    if compact.startswith(("948", "955", "958", "970", "971", "982", "987", "999")) and "porsche" not in out:
+        out.insert(0, "porsche")
     if compact.startswith("LR") and "landrover" not in out:
         out.insert(0, "landrover")
     if compact.startswith("A") and len(compact) >= 8 and compact[1:].isdigit() and "mercedes" not in out:
@@ -130,6 +132,7 @@ def main():
     ap.add_argument("--baseline-row", type=int, default=DEFAULT_BASELINE_ROW)
     ap.add_argument("--max-candidates", type=int, default=2)
     ap.add_argument("--scan-only", action="store_true")
+    ap.add_argument("--max-catalogs", type=int, default=12, help="Bound known-catalog batches without changing scheduled fallback behavior")
     ap.add_argument("--offer-prefix", default="", help="Restrict a repair batch to an explicit offer ID prefix")
     args = ap.parse_args()
 
@@ -226,7 +229,7 @@ def main():
         priorities = brand_priority(" ".join([oem, supplier_part, description]))
         best = None
         attempts = []
-        for key in priorities:
+        for key in priorities[:max(1, args.max_catalogs)]:
             offer = dict(base_offer, catalog_brand=key)
             out = work / f"row_{rn}_{key}"
             try:
