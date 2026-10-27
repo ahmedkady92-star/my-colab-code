@@ -8,7 +8,7 @@ from googleapiclient.discovery import build
 
 SPREADSHEET_ID = os.environ.get("ELKADY_SPREADSHEET_ID", "1A-8YoZkVIdelh2x3i7DmeFCERLeR1XREyEpK3Wrk6B0")
 SCOPES = ["https://www.googleapis.com/auth/spreadsheets"]
-FUEL = r"Petrol/Compressed Natural Gas \(CNG\)|Petrol/Ethanol|Petrol/Electric|Diesel/Electric|Petrol|Diesel|CNG|Electric"
+FUEL = r"Petrol/Compressed Natural Gas \(CNG\)|Petrol/Ethanol|Petrol/Electric|Diesel/Electric|Diesel/Electro|Petrol/Electro|Petrol/Liquified Petroleum Gas \(LPG\)|Petrol|Diesel|CNG|Electric"
 
 
 def norm(v):
@@ -130,7 +130,7 @@ def parse_fitment(row):
 
     # Supports normal VAG codes (BAR/CASA) and Porsche-style codes such as
     # M 48.00, M 05.9D and M02.2Y without swallowing the model name.
-    engine_code = r"(?:[A-Z]{1,3}\s+)?[A-Z0-9][A-Z0-9.\-]{1,11}"
+    engine_code = r"(?:[A-Z]{1,3}\s+)?[A-Z0-9][A-Z0-9.\-()/]{1,40}"
     pat = re.compile(
         rf"^(?P<prefix>.+?)\s+(?P<engine_code>{engine_code})\s+(?P<fuel>{FUEL})\s+"
         rf"(?P<engine>\d{{1,2}}(?:[.,]\d+)?)\s+(?P<hp>\d{{2,4}})hp\s+"
@@ -139,8 +139,9 @@ def parse_fitment(row):
     )
     m = pat.match(rest)
     if not m:
-        fallback_model = rest[:140]
-        years = re.search(r"(\d{4})-(\d{4}|now|current)\s*$", rest, re.I)
+        fields = [x.strip() for x in base.split("|")]
+        fallback_model = fields[1] if len(fields) > 2 and fields[0].upper() == make else rest[:140]
+        years = re.search(r"(\d{4})-(\d{4}|now|current)(?:\s|$)", rest, re.I)
         return {
             "make": make, "model": fallback_model, "generation": "", "engine_code": "", "fuel": "", "engine": "",
             "year_from": years.group(1) if years else row.get("year_from", ""),
@@ -180,7 +181,8 @@ def main():
 
     verified_mode = bool(gate.get("ai_eligible"))
     candidate_mode = bool(gate.get("catalog_mapped_candidate")) and bool(cars.get("candidate_fitments"))
-    if not verified_mode and not candidate_mode:
+    strong_review_mode = bool(gate.get("exact_oem_evidence")) and bool(cars.get("fitments"))
+    if not verified_mode and not candidate_mode and not strong_review_mode:
         print(json.dumps({"status":"SKIPPED_REVIEW_GATE","reason":gate.get("review_reason","")}, ensure_ascii=False))
         return
 
@@ -200,7 +202,7 @@ def main():
     created_ids = 0
     updated_ids = 0
 
-    desired_identifier_status = "Verified" if verified_mode else "Review Required - Catalog Mapped"
+    desired_identifier_status = "Verified" if verified_mode else ("Review Required - Strong OEM Source" if strong_review_mode else "Review Required - Catalog Mapped")
     desired_identifier_conf = "High" if verified_mode else "Medium"
     desired_identifier_notes = (
         "Exact searched OEM or explicit Cars245 cross-reference/supersession evidence; safe fitment gate passed"
@@ -262,7 +264,7 @@ def main():
         key = (str(r.get("Product_ID", "")), norm(r.get("Vehicle_Make")), norm(r.get("Vehicle_Model")), norm(r.get("Engine_Code")), str(r.get("Year_From", "")), str(r.get("Year_To", "")), norm(r.get("PR_Code")))
         existing_by_key[key] = (rn, r)
 
-    raw_fitments = cars.get("fitments", []) if verified_mode else cars.get("candidate_fitments", [])
+    raw_fitments = cars.get("fitments", []) if (verified_mode or strong_review_mode) else cars.get("candidate_fitments", [])
     pending_rows = []
     promotion_updates = []
     created_fitments = 0
@@ -285,7 +287,7 @@ def main():
             continue
 
         fitment_status = "Compatible - conditional" if verified_mode else "Candidate - Review Required"
-        verified_status = "Verified source; exact variant conditional" if verified_mode else "Cars245 page mentions searched OEM; catalog mapping candidate; OEM/supersession not proven"
+        verified_status = "Verified source; exact variant conditional" if verified_mode else ("Strong OEM source evidence; part-family/VIN review required; AI locked" if strong_review_mode else "Cars245 page mentions searched OEM; catalog mapping candidate; OEM/supersession not proven")
         vin_rule = (
             "Check VIN + PR/engine code before final confirmation when variant is conditional"
             if verified_mode else
