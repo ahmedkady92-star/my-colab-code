@@ -130,6 +130,7 @@ def main():
     ap.add_argument("--baseline-row", type=int, default=DEFAULT_BASELINE_ROW)
     ap.add_argument("--max-candidates", type=int, default=2)
     ap.add_argument("--scan-only", action="store_true")
+    ap.add_argument("--offer-prefix", default="", help="Restrict a repair batch to an explicit offer ID prefix")
     args = ap.parse_args()
 
     s = service()
@@ -173,6 +174,13 @@ def main():
             offer_id = stable_offer_id(rn, supplier, original or oem, brand, cost)
             if not args.scan_only:
                 update_fields(s, "36_Supplier_Offers", rn, headers, {"Supplier_Offer_ID": offer_id})
+        if args.offer_prefix and not offer_id.startswith(args.offer_prefix):
+            continue
+        notes = str(r.get("Notes", "")).upper()
+        if "SOURCE_QUARANTINED" in notes:
+            continue
+        if brand.upper() in {"BRAND NOT STATED", "UNKNOWN", "غير مذكور", "خيار 1", "خيار 2"}:
+            continue
         if offer_id in processed:
             continue
         if not (supplier and brand and cost > 0 and valid_part(oem)):
@@ -236,7 +244,13 @@ def main():
                 })
                 if best is None or sc > best[0]:
                     best = (sc, key, out / "import_payload.json", payload)
-                if gate.get("ai_eligible"):
+                # Retain review locks, but stop searching unrelated catalogs once
+                # the requested family has usable exact or catalog candidate evidence.
+                usable_review_evidence = (
+                    (gate.get("exact_oem_evidence") and gate.get("family_match") and cars.get("fitment_rows_found", 0))
+                    or (gate.get("catalog_mapped_candidate") and gate.get("candidate_family_match") and cars.get("candidate_fitment_rows_found", 0))
+                )
+                if gate.get("ai_eligible") or usable_review_evidence:
                     break
             except Exception as e:
                 attempts.append({"brand":key,"error":str(e)[:200]})
@@ -268,3 +282,4 @@ def main():
 
 if __name__ == "__main__":
     main()
+
