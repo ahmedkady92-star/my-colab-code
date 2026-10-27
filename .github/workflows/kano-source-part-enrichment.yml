@@ -1,0 +1,55 @@
+name: KANO Source Part Enrichment
+
+on:
+  push:
+    branches: [main]
+    paths: [.github/workflows/kano-source-part-enrichment.yml]
+  schedule:
+    - cron: '17 * * * *'
+  workflow_dispatch:
+    inputs:
+      max_items:
+        type: number
+        default: 12
+        description: Number of admitted source references to research
+
+permissions:
+  contents: read
+  id-token: write
+
+concurrency:
+  group: supplier-sheet-auto-trigger
+  cancel-in-progress: false
+
+jobs:
+  source-parts:
+    runs-on: ubuntu-latest
+    timeout-minutes: 50
+    steps:
+      - uses: actions/checkout@v4
+      - uses: google-github-actions/auth@v2
+        with:
+          workload_identity_provider: projects/127233897104/locations/global/workloadIdentityPools/elkady-github-actions/providers/github
+          service_account: elkady-crm-automation@elkadyauto-login.iam.gserviceaccount.com
+          create_credentials_file: true
+          export_environment_variables: true
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+      - run: pip install -r requirements.txt
+      - name: Verify caption, phone, price and SKU extraction boundaries
+        run: python -m unittest discover -s tests -p test_whatsapp_part_reference_parser.py
+      - name: Verify source admission and price-independent queue gates
+        run: python -m unittest discover -s tests -p test_source_part_queue_gates.py
+      - name: Research admitted source references without commercial writes
+        env:
+          ELKADY_SPREADSHEET_ID: 1A-8YoZkVIdelh2x3i7DmeFCERLeR1XREyEpK3Wrk6B0
+          MAX_ITEMS: ${{ github.event_name == 'push' && 3 || inputs.max_items || 12 }}
+        run: python tools/enrich_source_part_queue.py --max-items "$MAX_ITEMS" --max-catalogs 2
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: source-part-queue-summary
+          path: automation_output/source_part_queue_report.json
+          if-no-files-found: ignore
+          retention-days: 7
